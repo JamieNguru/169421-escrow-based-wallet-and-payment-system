@@ -1,0 +1,48 @@
+:root{--green:#15803d;--green-dark:#166534;--green-tint:#e8f5ec;--ink:#111827;--muted:#6b7280;--line:#e5e7eb;--bg:#f6f7f9;--red:#dc2626;--red-tint:#fdecec;--amber:#b45309;--amber-tint:#fef3e2}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,Helvetica,sans-serif;background:#fff;color:var(--ink);padding:30px;display:inline-block}
+.phone{width:390px;height:844px;border:3px solid var(--ink);border-radius:40px;padding:14px;position:relative;background:#fff}
+.screen{height:100%;border-radius:28px;overflow:hidden;position:relative;background:var(--bg);display:flex;flex-direction:column}
+.status{height:30px;display:flex;justify-content:space-between;padding:8px 22px 0;font-size:12px;color:#777}
+.top{padding:12px 20px 14px;background:#fff;border-bottom:1px solid #ddd}
+.hello{font-size:22px;font-weight:bold}
+.sub{font-size:14px;color:#666;margin-top:3px}
+.body{flex:1;padding:14px 16px;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.card{background:#fff;border:1.5px solid var(--line);border-radius:14px;padding:14px}
+.label{font-size:13px;color:#666;text-transform:uppercase;letter-spacing:.5px}
+.money{font-size:32px;font-weight:bold;margin:4px 0}
+.small{font-size:14px;color:#555}
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;height:52px;border-radius:12px;font-size:17px;font-weight:bold;border:2px solid var(--ink);background:#fff;color:var(--ink);width:100%}
+.btn.primary{background:var(--green);border-color:var(--green);color:#fff}
+.btn.danger{border-color:var(--red);color:var(--red)}
+.btn.dark{background:var(--ink);color:#fff}
+.btn.sm{height:42px;font-size:15px}
+.row{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.title{font-size:17px;font-weight:bold}
+.chip{display:inline-block;font-size:13px;padding:4px 10px;border-radius:20px;border:1.5px solid var(--green);background:var(--green-tint);color:var(--green-dark);font-weight:bold;margin-top:6px}
+.chip.dark{background:var(--green);color:#fff;border-color:var(--green)}
+.chip.amber{background:var(--amber-tint);color:var(--amber);border-color:#f5c98a}
+.section{font-size:15px;font-weight:bold;color:#444;margin:4px 2px -2px}
+.nav{height:70px;background:#fff;border-top:1px solid #ccc;display:flex;justify-content:space-around;align-items:center;padding-bottom:6px}
+.nav div{display:flex;flex-direction:column;align-items:center;font-size:12px;color:#777;gap:3px}
+.nav div.on{color:var(--green);font-weight:bold}
+.nav svg{width:26px;height:26px}
+.ico{width:22px;height:22px;flex:none}
+.avatar{width:44px;height:44px;border-radius:50%;background:#ccc;flex:none;border:1.5px solid #999}
+.x{position:relative}
+.x::after{content:"";position:absolute;inset:0;background:linear-gradient(to top right,transparent calc(50% - 1px),#bbb,transparent calc(50% + 1px)),linear-gradient(to top left,transparent calc(50% - 1px),#bbb,transparent calc(50% + 1px))}
+.chip.red{background:var(--red-tint);color:var(--red);border-color:#f3b0b0}
+.chip.grey{background:#f1f2f4;color:#555;border-color:#d0d3d8}
+.flabel{font-size:14px;font-weight:bold;color:#374151;margin-bottom:6px}
+.input{height:46px;border:1.5px solid #cfd4db;border-radius:10px;background:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 14px;font-size:15px;color:var(--ink)}
+.input.ph{color:#9ca3af}
+.input.tall{height:96px;align-items:flex-start;padding-top:12px}
+.hint{font-size:13px;color:var(--muted);margin-top:5px}
+.tbl{width:100%;border-collapse:collapse;font-size:14.5px}
+.tbl th{text-align:left;font-size:12.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:normal;padding:10px 12px;border-bottom:1.5px solid var(--line)}
+.tbl td{padding:12px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+.tbl tr:last-child td{border-bottom:none}
+.avatar.sm{width:40px;height:40px}
+.ph-img{background:#e9ecef;border:1.5px dashed #b8bec6;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#8a929c;font-size:13px}
+.pos{color:var(--green);font-weight:bold}
+.neg{color:var(--ink);font-weight:bold}
