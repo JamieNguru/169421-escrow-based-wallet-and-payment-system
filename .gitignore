@@ -1,3 +1,6 @@
+# Design assets (kept locally, not in the repo)
+diagrams/
+
 # Node
 node_modules/
 npm-debug.log*
