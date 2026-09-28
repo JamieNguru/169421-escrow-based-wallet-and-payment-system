@@ -7,6 +7,9 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 
 from src.feature_engineering import add_client_trust_label, add_worker_trust_label
+from src.model_io import save_model
+
+MODEL_VERSION = "v1"
 
 WORKER_FEATURE_COLUMNS = ["job_completion_rate", "dispute_count", "response_time_hours", "total_jobs"]
 CLIENT_FEATURE_COLUMNS = [
@@ -52,9 +55,13 @@ def _main():
 
     worker_model, _, worker_X_test, _, worker_y_test = train_worker_model(worker_dataset)
     print(f"Worker model trained on {len(worker_dataset)} rows; test accuracy: {worker_model.score(worker_X_test, worker_y_test):.3f}")
+    worker_path = save_model(worker_model, "worker", MODEL_VERSION)
+    print(f"Saved worker model to {worker_path}")
 
     client_model, _, client_X_test, _, client_y_test = train_client_model(client_dataset)
     print(f"Client model trained on {len(client_dataset)} rows; test accuracy: {client_model.score(client_X_test, client_y_test):.3f}")
+    client_path = save_model(client_model, "client", MODEL_VERSION)
+    print(f"Saved client model to {client_path}")
 
 
 if __name__ == "__main__":
