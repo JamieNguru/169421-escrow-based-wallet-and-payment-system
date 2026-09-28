@@ -81,3 +81,56 @@ def build_worker_and_client_datasets(transactions, seed=42):
     client_agg = aggregate_client_behavior(transactions)
     client_agg = assign_synthetic_roles(client_agg, seed=seed)
     return build_worker_dataset(client_agg), build_client_dataset(client_agg)
+
+
+TRUST_LEVELS = ["Low", "Medium", "High"]
+
+
+def _min_max_normalize(series):
+    """Scale a series to [0, 1]; a constant series (max == min) normalizes to all zeros."""
+    value_range = series.max() - series.min()
+    if value_range == 0:
+        return pd.Series(0.0, index=series.index)
+    return (series - series.min()) / value_range
+
+
+def add_trust_label(df, completion_col, issue_count_col, time_col, total_col, label_col="trust_level"):
+    """Derive a Low/Medium/High trust label from a completion rate, an issue rate, and a
+    time metric, since no ground-truth trust label exists for this synthetic data.
+
+    completion_col is treated as already a 0-1 rate. issue_count_col is divided by
+    total_col to get a rate, and time_col is used directly; both are min-max normalized
+    (lower is better for both) and combined with completion_col into a composite score,
+    which is then split into equal-sized tertiles.
+    """
+    df = df.copy()
+    issue_rate = df[issue_count_col] / df[total_col]
+
+    norm_issue_rate = _min_max_normalize(issue_rate)
+    norm_time = _min_max_normalize(df[time_col])
+
+    score = df[completion_col] - 0.5 * norm_issue_rate - 0.3 * norm_time
+    df[label_col] = pd.qcut(score, q=3, labels=TRUST_LEVELS)
+    return df
+
+
+def add_worker_trust_label(worker_dataset):
+    """Add a trust_level label to the worker dataset from completion rate, disputes, and response time."""
+    return add_trust_label(
+        worker_dataset,
+        completion_col="job_completion_rate",
+        issue_count_col="dispute_count",
+        time_col="response_time_hours",
+        total_col="total_jobs",
+    )
+
+
+def add_client_trust_label(client_dataset):
+    """Add a trust_level label to the client dataset from completion rate, refunds, and release time."""
+    return add_trust_label(
+        client_dataset,
+        completion_col="payment_completion_rate",
+        issue_count_col="refund_requests",
+        time_col="escrow_release_time_hours",
+        total_col="total_jobs_paid",
+    )
