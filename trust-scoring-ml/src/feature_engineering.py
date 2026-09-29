@@ -134,3 +134,19 @@ def add_client_trust_label(client_dataset):
         time_col="escrow_release_time_hours",
         total_col="total_jobs_paid",
     )
+
+
+def add_worker_rate_features(worker_dataset):
+    """Add dispute_rate (dispute_count / total_jobs) so models see a scale-invariant
+    rate instead of a raw count that depends on job volume."""
+    df = worker_dataset.copy()
+    df["dispute_rate"] = df["dispute_count"] / df["total_jobs"]
+    return df
+
+
+def add_client_rate_features(client_dataset):
+    """Add refund_rate (refund_requests / total_jobs_paid) so models see a scale-invariant
+    rate instead of a raw count that depends on job volume."""
+    df = client_dataset.copy()
+    df["refund_rate"] = df["refund_requests"] / df["total_jobs_paid"]
+    return df
