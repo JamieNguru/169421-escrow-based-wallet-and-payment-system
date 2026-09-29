@@ -6,18 +6,21 @@ import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 
-from src.feature_engineering import add_client_trust_label, add_worker_trust_label
+from src.feature_engineering import (
+    add_client_rate_features,
+    add_client_trust_label,
+    add_worker_rate_features,
+    add_worker_trust_label,
+)
 from src.model_io import save_model
 
 MODEL_VERSION = "v1"
 
-WORKER_FEATURE_COLUMNS = ["job_completion_rate", "dispute_count", "response_time_hours", "total_jobs"]
-CLIENT_FEATURE_COLUMNS = [
-    "payment_completion_rate",
-    "escrow_release_time_hours",
-    "refund_requests",
-    "total_jobs_paid",
-]
+# Rates rather than raw counts/volume: trust_level itself is derived from these same
+# rates (see feature_engineering.add_trust_label), and a raw count/volume pair makes
+# predictions unstable when total_jobs falls outside the training range (see #64).
+WORKER_FEATURE_COLUMNS = ["job_completion_rate", "dispute_rate", "response_time_hours"]
+CLIENT_FEATURE_COLUMNS = ["payment_completion_rate", "refund_rate", "escrow_release_time_hours"]
 
 
 def train_random_forest(dataset, feature_columns, label_col="trust_level", test_size=0.2, random_state=42):
@@ -37,13 +40,13 @@ def train_random_forest(dataset, feature_columns, label_col="trust_level", test_
 
 def train_worker_model(worker_dataset, test_size=0.2, random_state=42):
     """Label and train the worker trust-scoring model."""
-    labeled = add_worker_trust_label(worker_dataset)
+    labeled = add_worker_rate_features(add_worker_trust_label(worker_dataset))
     return train_random_forest(labeled, WORKER_FEATURE_COLUMNS, test_size=test_size, random_state=random_state)
 
 
 def train_client_model(client_dataset, test_size=0.2, random_state=42):
     """Label and train the client trust-scoring model."""
-    labeled = add_client_trust_label(client_dataset)
+    labeled = add_client_rate_features(add_client_trust_label(client_dataset))
     return train_random_forest(labeled, CLIENT_FEATURE_COLUMNS, test_size=test_size, random_state=random_state)
 
 
