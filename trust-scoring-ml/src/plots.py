@@ -4,6 +4,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from sklearn.metrics import confusion_matrix, roc_curve
 
 from src.feature_engineering import TRUST_LEVELS
@@ -134,6 +135,44 @@ def plot_feature_importance(model, feature_names, title, save_path):
     ax.xaxis.grid(True, color=GRIDLINE, linewidth=0.8)
     ax.set_axisbelow(True)
 
+    fig.tight_layout()
+    fig.savefig(save_path, dpi=200)
+    plt.close(fig)
+
+
+def plot_tuning_heatmap(cv_results, title, save_path):
+    """Heatmap of mean cross-validated macro F1 for each n_estimators x max_depth pair."""
+    results = pd.DataFrame(
+        {
+            "max_depth": [str(p["max_depth"]) for p in cv_results["params"]],
+            "n_estimators": [p["n_estimators"] for p in cv_results["params"]],
+            "score": cv_results["mean_test_score"],
+        }
+    )
+    grid = results.pivot(index="max_depth", columns="n_estimators", values="score")
+    # Shallowest first, with "None" (no depth limit) last.
+    depth_order = sorted(grid.index, key=lambda d: float("inf") if d == "None" else int(d))
+    grid = grid.reindex(depth_order)
+
+    fig, ax = plt.subplots(figsize=(5.5, 4), facecolor=SURFACE)
+    im = ax.imshow(grid.values, cmap=SEQUENTIAL_CMAP)
+
+    ax.set_xticks(range(len(grid.columns)))
+    ax.set_yticks(range(len(grid.index)))
+    ax.set_xticklabels(grid.columns, color=INK_SECONDARY)
+    ax.set_yticklabels(grid.index, color=INK_SECONDARY)
+    ax.set_xlabel("Number of trees (n_estimators)", color=INK_SECONDARY)
+    ax.set_ylabel("Maximum depth (max_depth)", color=INK_SECONDARY)
+    ax.set_title(title, color=INK_PRIMARY, fontsize=12, fontweight="bold")
+
+    threshold = (np.nanmin(grid.values) + np.nanmax(grid.values)) / 2
+    for i in range(grid.shape[0]):
+        for j in range(grid.shape[1]):
+            value = grid.values[i, j]
+            color = "white" if value > threshold else INK_PRIMARY
+            ax.text(j, i, f"{value:.3f}", ha="center", va="center", color=color, fontsize=10)
+
+    fig.colorbar(im, ax=ax, shrink=0.8, label="Mean CV macro F1")
     fig.tight_layout()
     fig.savefig(save_path, dpi=200)
     plt.close(fig)

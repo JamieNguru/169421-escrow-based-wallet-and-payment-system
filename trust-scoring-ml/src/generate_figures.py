@@ -12,7 +12,14 @@ from src.plots import (
     plot_fraud_rate_by_trust,
     plot_roc_curves,
 )
-from src.train import CLIENT_FEATURE_COLUMNS, WORKER_FEATURE_COLUMNS, train_client_model, train_worker_model
+from src.model_io import load_model
+from src.train import (
+    CLIENT_FEATURE_COLUMNS,
+    MODEL_VERSION,
+    WORKER_FEATURE_COLUMNS,
+    split_client_dataset,
+    split_worker_dataset,
+)
 
 
 def generate_role_figures(role_name, model, X_test, y_test, feature_columns, fraud_result, figures_dir):
@@ -47,18 +54,28 @@ def _main():
     print("Loading real fraud labels...")
     fraud_rates = load_client_fraud_rates(root / "data")
 
-    print("Training worker model...")
-    worker_model, _, worker_X_test, _, worker_y_test = train_worker_model(worker_dataset)
+    _, worker_X_test, _, worker_y_test = split_worker_dataset(worker_dataset)
     worker_fraud_result = correlate_trust_with_real_fraud(add_worker_trust_label(worker_dataset), fraud_rates)
     generate_role_figures(
-        "Worker", worker_model, worker_X_test, worker_y_test, WORKER_FEATURE_COLUMNS, worker_fraud_result, figures_dir
+        "Worker",
+        load_model("worker", MODEL_VERSION),
+        worker_X_test,
+        worker_y_test,
+        WORKER_FEATURE_COLUMNS,
+        worker_fraud_result,
+        figures_dir,
     )
 
-    print("Training client model...")
-    client_model, _, client_X_test, _, client_y_test = train_client_model(client_dataset)
+    _, client_X_test, _, client_y_test = split_client_dataset(client_dataset)
     client_fraud_result = correlate_trust_with_real_fraud(add_client_trust_label(client_dataset), fraud_rates)
     generate_role_figures(
-        "Client", client_model, client_X_test, client_y_test, CLIENT_FEATURE_COLUMNS, client_fraud_result, figures_dir
+        "Client",
+        load_model("client", MODEL_VERSION),
+        client_X_test,
+        client_y_test,
+        CLIENT_FEATURE_COLUMNS,
+        client_fraud_result,
+        figures_dir,
     )
 
     print(f"Saved 8 figures to {figures_dir}")
