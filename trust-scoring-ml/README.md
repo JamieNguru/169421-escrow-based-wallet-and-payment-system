@@ -42,7 +42,7 @@ Run locally with `jupyter lab` from this directory after activating the virtual 
 - `preprocessing.py` / `feature_engineering.py` — cleaning, per-user aggregation, synthetic worker/client datasets, trust labels.
 - `train.py` — train/test split, cross-validated hyperparameter tuning, and training. `python -m src.train` tunes both models and saves them.
 - `evaluate.py` — accuracy, precision, recall, F1, ROC-AUC on the held-out test set. `python -m src.evaluate` scores the saved models.
-- `external_validation.py` — checks trust levels against real fraud labels.
+- `external_validation.py` — checks trust levels against real fraud labels, holding transaction volume constant (fraud rate falls with volume regardless of trust).
 - `generate_figures.py` / `plots.py` — report figures. `python -m src.generate_figures` regenerates them from the saved models.
 - `predict.py` — inference wrapper used by `app.py`; loads the correct model based on the requesting user's role.
 

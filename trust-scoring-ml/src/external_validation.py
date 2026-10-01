@@ -10,12 +10,33 @@ else in the pipeline, as an external validity signal.
 import json
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
-from scipy.stats import spearmanr
+from scipy.stats import spearmanr, t
 
 from src.feature_engineering import TRUST_LEVELS, add_client_trust_label, add_worker_trust_label
 
 TRUST_LEVEL_ORDINAL = {level: i for i, level in enumerate(TRUST_LEVELS)}
+
+# Quartiles of each user's number of fraud-labelled transactions (activity level).
+VOLUME_BANDS = ["Lowest", "Lower-middle", "Upper-middle", "Highest"]
+
+
+def partial_spearman(x, y, z):
+    """Spearman correlation between x and y with z held constant.
+
+    Users have a similar number of fraud cases however much they transact, so fraud rate
+    falls as volume rises; controlling for volume stops a trust measure from looking
+    predictive merely because it tracks how active a user is. Returns (rho, two-sided p).
+    """
+    r_xy = spearmanr(x, y)[0]
+    r_xz = spearmanr(x, z)[0]
+    r_yz = spearmanr(y, z)[0]
+    rho = (r_xy - r_xz * r_yz) / np.sqrt((1 - r_xz**2) * (1 - r_yz**2))
+
+    dof = len(x) - 3
+    t_stat = rho * np.sqrt(dof / (1 - rho**2))
+    return rho, 2 * t.sf(abs(t_stat), dof)
 
 
 def load_client_fraud_rates(data_dir):
@@ -52,27 +73,49 @@ def load_client_fraud_rates(data_dir):
 
 
 def correlate_trust_with_real_fraud(dataset, fraud_rates, label_col="trust_level"):
-    """Correlate a dataset's trust_level (ordinal) with real per-client fraud rate."""
+    """Relate a dataset's trust_level to real per-client fraud rate, with and without
+    controlling for transaction volume.
+
+    Returns the raw Spearman correlation, the partial correlation holding volume constant,
+    how strongly trust itself tracks volume, mean fraud rate per trust level, and mean fraud
+    rate per trust level within each volume band.
+    """
     merged = dataset.merge(fraud_rates, on="client_id", how="inner")
     merged["trust_ordinal"] = merged[label_col].map(TRUST_LEVEL_ORDINAL)
+    volume = merged["real_labeled_transactions"]
 
     correlation, p_value = spearmanr(merged["trust_ordinal"], merged["real_fraud_rate"])
+    partial, partial_p = partial_spearman(merged["trust_ordinal"], merged["real_fraud_rate"], volume)
+
     group_means = merged.groupby(label_col, observed=True)["real_fraud_rate"].mean().reindex(TRUST_LEVELS)
+
+    merged["volume_band"] = pd.qcut(volume, q=len(VOLUME_BANDS), labels=VOLUME_BANDS)
+    by_band = (
+        merged.groupby(["volume_band", label_col], observed=True)["real_fraud_rate"]
+        .mean()
+        .unstack(label_col)
+        .reindex(index=VOLUME_BANDS, columns=TRUST_LEVELS)
+    )
 
     return {
         "n_clients": len(merged),
         "spearman_correlation": correlation,
         "p_value": p_value,
+        "partial_spearman_correlation": partial,
+        "partial_p_value": partial_p,
+        "trust_volume_correlation": spearmanr(merged["trust_ordinal"], volume)[0],
         "mean_real_fraud_rate_by_trust_level": group_means.to_dict(),
+        "mean_real_fraud_rate_by_volume_band": by_band,
     }
 
 
 def _print_report(name, result):
     print(f"\n{name} (n={result['n_clients']})")
-    print(f"  Spearman correlation (trust vs real fraud rate): {result['spearman_correlation']:.3f} (p={result['p_value']:.4f})")
-    print("  Mean real fraud rate by trust_level:")
-    for level, rate in result["mean_real_fraud_rate_by_trust_level"].items():
-        print(f"    {level}: {rate:.4f}")
+    print(f"  Trust vs real fraud rate, Spearman:          {result['spearman_correlation']:+.3f} (p={result['p_value']:.4f})")
+    print(f"  Same, holding transaction volume constant:   {result['partial_spearman_correlation']:+.3f} (p={result['partial_p_value']:.4f})")
+    print(f"  Trust vs transaction volume, Spearman:       {result['trust_volume_correlation']:+.3f}")
+    print("  Mean real fraud rate by volume band (rows) and trust level (columns):")
+    print(result["mean_real_fraud_rate_by_volume_band"].round(4).to_string())
 
 
 def _main():
