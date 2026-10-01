@@ -36,10 +36,14 @@ def aggregate_client_behavior(transactions):
         total_amount=("amount", "sum"),
         avg_amount=("amount", "mean"),
         error_count=("has_error", "sum"),
+        funds_error_count=("funds_error", "sum"),
+        credential_error_count=("credential_error", "sum"),
         avg_hours_between_transactions=("hours_since_prev", "mean"),
     ).reset_index()
 
     client_agg["error_rate"] = client_agg["error_count"] / client_agg["transaction_count"]
+    client_agg["funds_error_rate"] = client_agg["funds_error_count"] / client_agg["transaction_count"]
+    client_agg["credential_error_rate"] = client_agg["credential_error_count"] / client_agg["transaction_count"]
     client_agg["avg_hours_between_transactions"] = client_agg[
         "avg_hours_between_transactions"
     ].fillna(client_agg["avg_hours_between_transactions"].median())
@@ -55,11 +59,16 @@ def assign_synthetic_roles(client_agg, seed=42):
     return client_agg
 
 
+# Completion and dispute/refund features come from different error types (insufficient
+# balance vs. credential errors), so they are independent rather than mirror images of one
+# failure rate. Technical glitches are system noise and count towards neither.
+
+
 def build_worker_dataset(client_agg):
     """Derive the synthetic worker trust dataset from role-assigned client aggregates."""
     worker_df = client_agg[client_agg["role"] == "worker"].copy()
-    worker_df["job_completion_rate"] = 1 - worker_df["error_rate"]
-    worker_df["dispute_count"] = worker_df["error_count"]
+    worker_df["job_completion_rate"] = 1 - worker_df["funds_error_rate"]
+    worker_df["dispute_count"] = worker_df["credential_error_count"]
     worker_df["response_time_hours"] = worker_df["avg_hours_between_transactions"]
     worker_df["total_jobs"] = worker_df["transaction_count"]
     return worker_df[WORKER_COLUMNS].reset_index(drop=True)
@@ -68,9 +77,9 @@ def build_worker_dataset(client_agg):
 def build_client_dataset(client_agg):
     """Derive the synthetic client trust dataset from role-assigned client aggregates."""
     client_df = client_agg[client_agg["role"] == "client"].copy()
-    client_df["payment_completion_rate"] = 1 - client_df["error_rate"]
+    client_df["payment_completion_rate"] = 1 - client_df["funds_error_rate"]
     client_df["escrow_release_time_hours"] = client_df["avg_hours_between_transactions"]
-    client_df["refund_requests"] = client_df["error_count"]
+    client_df["refund_requests"] = client_df["credential_error_count"]
     client_df["total_jobs_paid"] = client_df["transaction_count"]
     return client_df[CLIENT_COLUMNS].reset_index(drop=True)
 

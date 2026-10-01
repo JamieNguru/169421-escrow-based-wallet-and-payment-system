@@ -49,10 +49,25 @@ def clean_amount(transactions):
     return transactions
 
 
+# A transaction can list several comma-separated errors, e.g. "Bad PIN,Insufficient Balance".
+FUNDS_ERROR = "Insufficient Balance"
+CREDENTIAL_ERRORS = ["Bad PIN", "Bad Card Number", "Bad Expiration", "Bad CVV", "Bad Zipcode"]
+TECHNICAL_ERROR = "Technical Glitch"
+
+
 def flag_errors(transactions):
-    """Add a binary has_error flag from the errors column."""
+    """Flag failed transactions overall and by type.
+
+    has_error: any error. funds_error: insufficient balance (the user couldn't pay).
+    credential_error: a wrong PIN, card number, expiry, CVV, or zip code (a user-caused
+    verification failure). technical_error: a system glitch, not the user's doing.
+    """
     transactions = transactions.copy()
+    errors = transactions["errors"].fillna("")
     transactions["has_error"] = transactions["errors"].notna().astype(int)
+    transactions["funds_error"] = errors.str.contains(FUNDS_ERROR, regex=False).astype("int8")
+    transactions["credential_error"] = errors.str.contains("|".join(CREDENTIAL_ERRORS)).astype("int8")
+    transactions["technical_error"] = errors.str.contains(TECHNICAL_ERROR, regex=False).astype("int8")
     return transactions
 
 

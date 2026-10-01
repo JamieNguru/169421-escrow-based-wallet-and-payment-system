@@ -28,6 +28,28 @@ def test_flag_errors_marks_non_null_errors():
     assert result["has_error"].tolist() == [0, 1, 0, 1]
 
 
+def test_flag_errors_classifies_error_types_including_combined_errors():
+    df = pd.DataFrame(
+        {
+            "errors": [
+                None,
+                "Insufficient Balance",
+                "Bad CVV",
+                "Bad PIN,Insufficient Balance",
+                "Technical Glitch",
+                "Bad Zipcode,Technical Glitch",
+            ]
+        }
+    )
+
+    result = flag_errors(df)
+
+    assert result["has_error"].tolist() == [0, 1, 1, 1, 1, 1]
+    assert result["funds_error"].tolist() == [0, 1, 0, 1, 0, 0]
+    assert result["credential_error"].tolist() == [0, 0, 1, 1, 0, 1]
+    assert result["technical_error"].tolist() == [0, 0, 0, 0, 1, 1]
+
+
 def test_encode_use_chip_one_hot_encodes_with_channel_prefix():
     df = pd.DataFrame({"use_chip": ["Chip Transaction", "Swipe Transaction", "Chip Transaction"]})
 
