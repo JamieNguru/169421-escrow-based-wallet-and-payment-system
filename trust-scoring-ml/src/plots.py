@@ -4,6 +4,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.ticker import PercentFormatter
 import pandas as pd
 from sklearn.metrics import confusion_matrix, roc_curve
 
@@ -38,29 +39,33 @@ def _new_figure(figsize=(6, 4.5)):
     return fig, ax
 
 
-def plot_fraud_rate_by_trust(mean_fraud_rate_by_level, title, save_path):
-    """Bar chart of mean real fraud rate per trust_level."""
-    fig, ax = _new_figure()
+def plot_fraud_rate_by_trust_and_volume(fraud_rate_by_band, title, save_path):
+    """Grouped bars: mean real fraud rate for each trust level, within each transaction-volume
+    band. Comparing trust levels inside a band removes the effect of volume on fraud rate."""
+    fig, ax = _new_figure(figsize=(7, 4.5))
 
-    levels = [level for level in TRUST_LEVELS if level in mean_fraud_rate_by_level]
-    values = [mean_fraud_rate_by_level[level] for level in levels]
-    colors = [TRUST_LEVEL_RAMP[level] for level in levels]
+    bands = list(fraud_rate_by_band.index)
+    x = np.arange(len(bands))
+    width = 0.26
 
-    bars = ax.bar(levels, values, color=colors, width=0.6)
-    for bar, value in zip(bars, values):
-        ax.text(
-            bar.get_x() + bar.get_width() / 2,
-            bar.get_height(),
-            f"{value:.4f}",
-            ha="center",
-            va="bottom",
-            fontsize=9,
-            color=INK_PRIMARY,
+    for i, level in enumerate(TRUST_LEVELS):
+        ax.bar(
+            x + (i - 1) * width,
+            fraud_rate_by_band[level].values,
+            width=width,
+            color=TRUST_LEVEL_RAMP[level],
+            edgecolor=SURFACE,
+            linewidth=1.5,
+            label=f"{level} trust",
         )
 
+    ax.set_xticks(x)
+    ax.set_xticklabels(bands, color=INK_SECONDARY)
+    ax.yaxis.set_major_formatter(PercentFormatter(xmax=1, decimals=2))
+    ax.set_xlabel("Transaction volume (quartile of users)", color=INK_SECONDARY)
     ax.set_ylabel("Mean real fraud rate", color=INK_SECONDARY)
-    ax.set_xlabel("Predicted trust level", color=INK_SECONDARY)
     ax.set_title(title, color=INK_PRIMARY, fontsize=12, fontweight="bold")
+    ax.legend(frameon=False, labelcolor=INK_SECONDARY)
     ax.yaxis.grid(True, color=GRIDLINE, linewidth=0.8)
     ax.set_axisbelow(True)
 

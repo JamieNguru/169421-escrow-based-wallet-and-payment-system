@@ -9,7 +9,7 @@ from src.feature_engineering import add_client_trust_label, add_worker_trust_lab
 from src.plots import (
     plot_confusion_matrix,
     plot_feature_importance,
-    plot_fraud_rate_by_trust,
+    plot_fraud_rate_by_trust_and_volume,
     plot_roc_curves,
 )
 from src.model_io import load_model
@@ -35,10 +35,10 @@ def generate_role_figures(role_name, model, X_test, y_test, feature_columns, fra
     plot_feature_importance(
         model, feature_columns, f"{role_name} model - feature importance", figures_dir / f"{role_name.lower()}_feature_importance.png"
     )
-    plot_fraud_rate_by_trust(
-        fraud_result["mean_real_fraud_rate_by_trust_level"],
-        f"{role_name}: real fraud rate by predicted trust level",
-        figures_dir / f"{role_name.lower()}_fraud_rate_by_trust.png",
+    plot_fraud_rate_by_trust_and_volume(
+        fraud_result["mean_real_fraud_rate_by_volume_band"],
+        f"{role_name}s: real fraud rate by trust level, within volume bands",
+        figures_dir / f"{role_name.lower()}_fraud_rate_by_trust_and_volume.png",
     )
 
 

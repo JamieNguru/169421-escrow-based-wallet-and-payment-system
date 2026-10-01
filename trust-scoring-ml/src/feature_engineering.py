@@ -95,30 +95,29 @@ def build_worker_and_client_datasets(transactions, seed=42):
 TRUST_LEVELS = ["Low", "Medium", "High"]
 
 
-def _min_max_normalize(series):
-    """Scale a series to [0, 1]; a constant series (max == min) normalizes to all zeros."""
-    value_range = series.max() - series.min()
-    if value_range == 0:
-        return pd.Series(0.0, index=series.index)
-    return (series - series.min()) / value_range
+# Relative influence of each term on the trust score.
+TRUST_SCORE_WEIGHTS = {"completion": 1.0, "issue_rate": 0.5, "time": 0.3}
 
 
 def add_trust_label(df, completion_col, issue_count_col, time_col, total_col, label_col="trust_level"):
     """Derive a Low/Medium/High trust label from a completion rate, an issue rate, and a
     time metric, since no ground-truth trust label exists for this synthetic data.
 
-    completion_col is treated as already a 0-1 rate. issue_count_col is divided by
-    total_col to get a rate, and time_col is used directly; both are min-max normalized
-    (lower is better for both) and combined with completion_col into a composite score,
-    which is then split into equal-sized tertiles.
+    issue_count_col is divided by total_col to get a rate. Each of the three terms is
+    converted to a percentile rank (0-1) before weighting, so every term has the same
+    spread and the weights alone set its influence. Min-max scaling doesn't do this: the
+    completion and time columns are heavily skewed by a few outliers, which squash most
+    users into a narrow band. Higher completion is better; lower issue rate and time are
+    better. The weighted score is split into equal-sized tertiles.
     """
     df = df.copy()
     issue_rate = df[issue_count_col] / df[total_col]
 
-    norm_issue_rate = _min_max_normalize(issue_rate)
-    norm_time = _min_max_normalize(df[time_col])
-
-    score = df[completion_col] - 0.5 * norm_issue_rate - 0.3 * norm_time
+    score = (
+        TRUST_SCORE_WEIGHTS["completion"] * df[completion_col].rank(pct=True)
+        - TRUST_SCORE_WEIGHTS["issue_rate"] * issue_rate.rank(pct=True)
+        - TRUST_SCORE_WEIGHTS["time"] * df[time_col].rank(pct=True)
+    )
     df[label_col] = pd.qcut(score, q=3, labels=TRUST_LEVELS)
     return df
 

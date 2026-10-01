@@ -3,6 +3,7 @@ import pytest
 
 from src.feature_engineering import (
     add_time_features,
+    add_worker_trust_label,
     aggregate_client_behavior,
     assign_synthetic_roles,
     build_client_dataset,
@@ -186,3 +187,43 @@ def test_completion_and_dispute_rates_are_independent():
     assert worker["job_completion_rate"] == pytest.approx(0.8)
     assert dispute_rate == pytest.approx(0.1)
     assert worker["job_completion_rate"] + dispute_rate != pytest.approx(1.0)
+
+
+def _workers(completion, disputes, response_hours):
+    n = len(completion)
+    return pd.DataFrame(
+        {
+            "client_id": range(n),
+            "job_completion_rate": completion,
+            "dispute_count": disputes,
+            "response_time_hours": response_hours,
+            "total_jobs": [100] * n,
+        }
+    )
+
+
+def test_trust_label_weights_completion_above_dispute_rate():
+    # Completion and dispute rate rise together. Completion carries weight 1.0 against 0.5 for
+    # disputes, so higher completion should win even though its spread (0.990-0.995) is tiny.
+    # The old unscaled formula let the dispute term swamp completion and ranked these backwards.
+    workers = _workers(
+        completion=[0.990, 0.991, 0.992, 0.993, 0.994, 0.995],
+        disputes=[1, 2, 3, 4, 5, 6],
+        response_hours=[5.0] * 6,
+    )
+
+    labels = add_worker_trust_label(workers)["trust_level"].tolist()
+
+    assert labels == ["Low", "Low", "Medium", "Medium", "High", "High"]
+
+
+def test_trust_label_rewards_faster_response():
+    workers = _workers(
+        completion=[0.99] * 6,
+        disputes=[2] * 6,
+        response_hours=[30.0, 20.0, 12.0, 8.0, 4.0, 2.0],
+    )
+
+    labels = add_worker_trust_label(workers)["trust_level"].tolist()
+
+    assert labels == ["Low", "Low", "Medium", "Medium", "High", "High"]
