@@ -24,18 +24,28 @@ Raw datasets are not committed to the repo (see `.gitignore`). Place them locall
 
 ## Notebooks
 
-- [`notebooks/01_dataset_exploration.ipynb`](notebooks/01_dataset_exploration.ipynb) — loads and profiles the raw datasets.
-- [`notebooks/02_feature_engineering.ipynb`](notebooks/02_feature_engineering.ipynb) — cleans and engineers features, split into separate worker and client datasets.
+One notebook per pipeline stage, following the proposal's Chapter 3. Run them in order: each saves what the next one loads.
 
-Run with `jupyter lab` from this directory after activating the virtual environment.
+| Notebook | Stage | Saves |
+|---|---|---|
+| [`01_data_acquisition`](notebooks/01_data_acquisition.ipynb) | Profiles the raw data (3.2.1) | — |
+| [`02_data_preprocessing`](notebooks/02_data_preprocessing.ipynb) | Cleans amounts, flags failures, encodes channel, merges merchant categories (3.2.2) | `data/processed/transactions_clean.parquet` |
+| [`03_feature_engineering`](notebooks/03_feature_engineering.ipynb) | Per-user aggregation, synthetic worker/client split, trust labels (3.2.2) | `data/processed/{worker,client}_features.csv` |
+| [`04_model_training`](notebooks/04_model_training.ipynb) | Cross-validated tuning of trees and depth, final training (3.2.3) | `models/*.joblib`, tuning heatmaps |
+| [`05_model_evaluation`](notebooks/05_model_evaluation.ipynb) | Test-set metrics, real-fraud validation, report figures (3.2.4) | `reports/figures/*.png` |
+| [`06_prediction_and_deployment`](notebooks/06_prediction_and_deployment.ipynb) | `predict_trust` and the Flask `/score` endpoint | — |
+
+Run locally with `jupyter lab` from this directory after activating the virtual environment. Each notebook also runs in Google Colab: its first cell mounts Google Drive, copies this repo's code from the `dev` branch, and reads raw data from the Drive root (outputs go to `My Drive/processed` and `My Drive/models`).
 
 ## Pipeline (`src/`)
 
-- `preprocessing.py` / `feature_engineering.py` — reusable feature pipeline for both the worker and client datasets, ported from the notebooks.
-- `train.py` — trains the worker and client Random Forest models.
-- `evaluate.py` — computes precision/recall/F1/ROC-AUC separately for each model.
+- `preprocessing.py` / `feature_engineering.py` — cleaning, per-user aggregation, synthetic worker/client datasets, trust labels.
+- `train.py` — train/test split, cross-validated hyperparameter tuning, and training. `python -m src.train` tunes both models and saves them.
+- `evaluate.py` — accuracy, precision, recall, F1, ROC-AUC on the held-out test set. `python -m src.evaluate` scores the saved models.
+- `external_validation.py` — checks trust levels against real fraud labels.
+- `generate_figures.py` / `plots.py` — report figures. `python -m src.generate_figures` regenerates them from the saved models.
 - `predict.py` — inference wrapper used by `app.py`; loads the correct model based on the requesting user's role.
 
 ## API
 
-Once `app.py` is implemented: `POST /score` returns a trust classification for a given user, applying the worker or client model depending on their role. See [Issues](../../../issues) for current build status.
+`python app.py` serves `GET /health` and `POST /score` (body: `{"role": "worker" | "client", "features": {...}}`), returning the trust level and per-level probabilities.

@@ -18,10 +18,21 @@ TRANSACTION_COLUMNS = [
 ]
 
 
+# Compact dtypes keep the 13.3M-row file to a few hundred MB in memory.
+TRANSACTION_DTYPES = {
+    "id": "int32",
+    "client_id": "int16",
+    "card_id": "int16",
+    "merchant_id": "int32",
+    "mcc": "int16",
+    "use_chip": "category",
+}
+
+
 def load_transactions(path):
     """Load the raw transactions CSV, keeping only the columns needed downstream."""
-    transactions = pd.read_csv(path)
-    transactions = transactions[TRANSACTION_COLUMNS].copy()
+    transactions = pd.read_csv(path, usecols=TRANSACTION_COLUMNS, dtype=TRANSACTION_DTYPES)
+    transactions = transactions[TRANSACTION_COLUMNS]
     transactions["date"] = pd.to_datetime(transactions["date"])
     return transactions
 
@@ -58,9 +69,9 @@ def merge_mcc_descriptions(transactions, mcc_codes_path):
     mcc_lookup = pd.DataFrame(
         {
             "mcc": [int(k) for k in mcc_codes.keys()],
-            "mcc_description": list(mcc_codes.values()),
+            "mcc_description": pd.Categorical(list(mcc_codes.values())),
         }
-    )
+    ).astype({"mcc": transactions["mcc"].dtype})
     return transactions.merge(mcc_lookup, on="mcc", how="left")
 
 
