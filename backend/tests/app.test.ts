@@ -1,6 +1,6 @@
-const request = require("supertest");
+import request from "supertest";
 
-const { createApp } = require("../src/app");
+import { createApp } from "../src/app";
 
 describe("backend app", () => {
   const app = createApp();
