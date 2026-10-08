@@ -13,6 +13,19 @@ cp .env.example .env
 
 Create a Firebase project, enable Firestore, then download a service account key (Project settings > Service accounts) and point `FIREBASE_SERVICE_ACCOUNT_PATH` in `.env` at it. Key files are git-ignored. To work offline, set `FIRESTORE_EMULATOR_HOST` instead. Code gets the database via `getDb()` from `src/config/firebase.ts`.
 
+## Auth
+
+`POST /api/auth/register` creates a client or worker account.
+
+```
+{ "name": "Jane Doe", "email": "jane@example.com", "phone": "0712345678", "password": "at-least-8-chars", "role": "client" }
+```
+
+- `role` is `client` or `worker`; admins cannot self-register.
+- `phone` accepts `07xx`, `01xx`, `+254...` or `254...` and is stored as `254XXXXXXXXX`.
+- Returns `201` with `{ id, name, email, phone, role }`, `400` for invalid input, `409` if the email is taken.
+- Users are stored in the `clients` or `workers` collection with a bcrypt `passwordHash`. An `emails/{email}` doc enforces uniqueness across both.
+
 ## Run
 
 ```
