@@ -9,6 +9,10 @@ npm install
 cp .env.example .env
 ```
 
+## Firestore
+
+Create a Firebase project, enable Firestore, then download a service account key (Project settings > Service accounts) and point `FIREBASE_SERVICE_ACCOUNT_PATH` in `.env` at it. Key files are git-ignored. To work offline, set `FIRESTORE_EMULATOR_HOST` instead. Code gets the database via `getDb()` from `src/config/firebase.ts`.
+
 ## Run
 
 ```
@@ -32,6 +36,7 @@ TypeScript is pinned to 6.x because ts-jest doesn't support TypeScript 7 yet.
 
 - `src/app.ts` — builds the Express app (used by both the server and the tests)
 - `src/server.ts` — loads `.env` and starts listening
+- `src/config/` — external service setup (Firestore)
 - `src/routes/` — route handlers, one file per resource
 - `src/middleware/` — shared middleware (404 and error handling)
 - `tests/` — Jest + Supertest tests
