@@ -1,6 +1,7 @@
 import express, { type Express } from "express";
 import cors from "cors";
 
+import authRouter from "./routes/auth";
 import healthRouter from "./routes/health";
 import { errorHandler, notFound } from "./middleware/errorHandler";
 
@@ -11,6 +12,7 @@ export function createApp(): Express {
   app.use(express.json());
 
   app.use("/api/health", healthRouter);
+  app.use("/api/auth", authRouter);
 
   app.use(notFound);
   app.use(errorHandler);
