@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import request from "supertest";
 
 import { createApp } from "../src/app";
+import { createUser } from "../src/services/userService";
 
 // Minimal in-memory stand-in for the Firestore calls registerUser makes.
 const store = new Map<string, Record<string, any>>();
@@ -93,5 +94,32 @@ describe("POST /api/auth/register", () => {
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty("error");
     expect(store.size).toBe(0);
+  });
+});
+
+describe("createUser (admin seeding)", () => {
+  beforeEach(() => {
+    store.clear();
+    nextId = 1;
+  });
+
+  test("stores an admin in the admins collection without a phone", async () => {
+    const admin = await createUser({
+      name: "Admin",
+      email: "root@example.com",
+      password: "supersecret",
+      role: "admin",
+    });
+
+    expect(admin).toEqual({ id: "id1", name: "Admin", email: "root@example.com", role: "admin" });
+    expect(store.get("emails/root@example.com")).toEqual({ role: "admin", userId: "id1" });
+    expect(store.get("admins/id1")).not.toHaveProperty("phone");
+  });
+
+  test("rejects a duplicate email", async () => {
+    const input = { name: "Admin", email: "root@example.com", password: "supersecret", role: "admin" } as const;
+    await createUser(input);
+
+    await expect(createUser(input)).rejects.toMatchObject({ status: 409 });
   });
 });
