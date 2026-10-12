@@ -2,9 +2,13 @@ import { Router } from "express";
 
 import { HttpError } from "../errors";
 import { authenticate, requireRole } from "../middleware/auth";
-import { applyToJob, listJobApplications } from "../services/applicationService";
+import { applyToJob, listJobApplications, selectWorker } from "../services/applicationService";
 import { listOpenJobs, postJob } from "../services/jobService";
-import { applyToJobSchema, listApplicationsQuerySchema } from "../validation/applications";
+import {
+  applyToJobSchema,
+  listApplicationsQuerySchema,
+  selectWorkerSchema,
+} from "../validation/applications";
 import { browseJobsQuerySchema, postJobSchema } from "../validation/jobs";
 
 const router = Router();
@@ -49,6 +53,20 @@ router.get("/:jobId/applications", authenticate, requireRole("client"), async (r
   const { limit, cursor } = parsed.data;
   try {
     res.json(await listJobApplications(req.user!.sub, String(req.params.jobId), { limit, before: cursor }));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/:jobId/select", authenticate, requireRole("client"), async (req, res, next) => {
+  const parsed = selectWorkerSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    const message = parsed.error.issues.map((issue) => issue.message).join("; ");
+    return next(new HttpError(400, message));
+  }
+
+  try {
+    res.json(await selectWorker(req.user!.sub, String(req.params.jobId), parsed.data.workerId));
   } catch (err) {
     next(err);
   }

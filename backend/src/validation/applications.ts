@@ -12,6 +12,15 @@ export const applyToJobSchema = z.object({
 
 export type ApplyToJobInput = z.infer<typeof applyToJobSchema>;
 
+export const selectWorkerSchema = z.object({
+  workerId: z
+    .string({ error: "workerId must be a string" })
+    .trim()
+    .min(1, "workerId is required"),
+});
+
+export type SelectWorkerInput = z.infer<typeof selectWorkerSchema>;
+
 export const listApplicationsQuerySchema = browseJobsQuerySchema.pick({ limit: true, cursor: true });
 
 export type ListApplicationsQuery = z.infer<typeof listApplicationsQuerySchema>;

@@ -3,11 +3,12 @@ import type { Currency } from "../validation/currency";
 import { toDate } from "./escrowService";
 import type { PostJobInput } from "../validation/jobs";
 
-export type JobStatus = "open";
+export type JobStatus = "open" | "assigned";
 
 export interface Job {
   id: string;
   clientId: string;
+  workerId?: string;
   title: string;
   description: string;
   budget: number;
