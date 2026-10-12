@@ -144,6 +144,26 @@ Returns `200` with `{ "transactions": [{ id, jobId, type, amount, currency, from
 
 Firestore needs two composite indexes on `transactions`: `fromUserId` ascending + `createdAt` descending, and `toUserId` ascending + `createdAt` descending.
 
+## Convert currency
+
+`GET /api/wallet/convert` returns a live quote between KES, UGX, TZS and USD. Any signed-in role can call it. It is a quote only; it does not change any wallet or ledger. Rates come from a USD-based feed (default `open.er-api.com`, override with `EXCHANGE_RATE_API_URL`), are cached for an hour, and stale rates are served if a refresh fails.
+
+Query parameters (all required):
+
+| Param | Meaning |
+|---|---|
+| `from` | Source currency: `KES`, `UGX`, `TZS` or `USD` (case-insensitive) |
+| `to` | Target currency, same options |
+| `amount` | Amount to convert, greater than 0 |
+
+Returns `200` with `{ "conversion": { from, to, amount, rate, converted, rateUpdatedAt } }`. `rate` is units of `to` per 1 `from`, and `converted` is rounded to 2 decimals.
+
+| Status | Cause |
+|---|---|
+| `400` | Unsupported or missing currency, or `amount` missing, not a number or not above 0 |
+| `401` | Missing or invalid token |
+| `503` | The rate provider is unreachable and no cached rates exist |
+
 ## Initiate STK Push
 
 `POST /api/payments/stk-push` (client only) starts an M-Pesa Daraja STK Push so the client can pay for a job's escrow from their phone. It prompts the phone and stores a `payments/{CheckoutRequestID}` doc with status `pending`. It does not touch the wallet, escrow or ledger; settling the payment from the Daraja callback is a separate step. Configure the `DARAJA_*` variables in `.env` (see `.env.example`). `DARAJA_CALLBACK_URL` must be a public HTTPS URL, so use a tunnel such as ngrok locally.
