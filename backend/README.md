@@ -30,6 +30,18 @@ Create a Firebase project, enable Firestore, then download a service account key
 
 Admins cannot self-register. Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` in `.env` and run `npm run seed:admin` to create one in the `admins` collection.
 
+## Authorization
+
+`src/middleware/auth.ts` protects routes. `authenticate` reads `Authorization: Bearer <token>` and sets `req.user` to `{ sub, role }`; `requireRole` then restricts a route to one or more roles.
+
+```ts
+router.post("/jobs", authenticate, requireRole("client"), handler);
+router.get("/disputes", authenticate, requireRole("worker", "admin"), handler);
+```
+
+- A missing, malformed, wrong-secret or expired token returns `401`.
+- A valid token with a role not in the list returns `403`.
+
 ## Run
 
 ```
@@ -55,5 +67,5 @@ TypeScript is pinned to 6.x because ts-jest doesn't support TypeScript 7 yet.
 - `src/server.ts` — loads `.env` and starts listening
 - `src/config/` — external service setup (Firestore)
 - `src/routes/` — route handlers, one file per resource
-- `src/middleware/` — shared middleware (404 and error handling)
+- `src/middleware/` — shared middleware (auth and role checks, 404 and error handling)
 - `tests/` — Jest + Supertest tests
