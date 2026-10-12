@@ -144,6 +144,27 @@ Returns `200` with `{ "transactions": [{ id, jobId, type, amount, currency, from
 
 Firestore needs two composite indexes on `transactions`: `fromUserId` ascending + `createdAt` descending, and `toUserId` ascending + `createdAt` descending.
 
+## Initiate STK Push
+
+`POST /api/payments/stk-push` (client only) starts an M-Pesa Daraja STK Push so the client can pay for a job's escrow from their phone. It prompts the phone and stores a `payments/{CheckoutRequestID}` doc with status `pending`. It does not touch the wallet, escrow or ledger; settling the payment from the Daraja callback is a separate step. Configure the `DARAJA_*` variables in `.env` (see `.env.example`). `DARAJA_CALLBACK_URL` must be a public HTTPS URL, so use a tunnel such as ngrok locally.
+
+Request body (`phone` is optional and falls back to the phone saved at registration):
+
+```json
+{ "jobId": "job1", "workerId": "worker1", "amount": 500, "phone": "0708374149" }
+```
+
+`amount` must be a whole number of KES. Returns `202` with `{ "payment": { checkoutRequestId, merchantRequestId, jobId, clientId, workerId, amount, currency, phone, status, createdAt }, "message": "<Daraja customer message>" }`.
+
+| Status | Cause |
+|---|---|
+| `400` | Missing or invalid `jobId`, `workerId`, `amount` or `phone`, or no phone on file |
+| `401` | Missing or invalid token |
+| `403` | Caller is not a client |
+| `404` | Worker not found |
+| `409` | The job's escrow is already funded |
+| `502` / `503` | Daraja rejected the request / could not be reached |
+
 ## Run
 
 ```
