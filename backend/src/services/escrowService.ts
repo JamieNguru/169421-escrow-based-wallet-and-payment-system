@@ -1,7 +1,9 @@
+import type { Firestore, Transaction } from "firebase-admin/firestore";
+
 import { getDb } from "../config/firebase";
 import { HttpError } from "../errors";
 import type { FundEscrowInput } from "../validation/escrow";
-import { transition, type EscrowStatus } from "./escrowStateMachine";
+import { transition, type EscrowStatus, type WalletEffect } from "./escrowStateMachine";
 
 export interface Escrow {
   jobId: string;
@@ -138,27 +140,53 @@ export async function confirmCompletion(clientId: string, jobId: string): Promis
     }
 
     const { status, effects } = transition(data.status, "release", "client", data.amount);
-
-    const [clientWalletSnap, workerWalletSnap] = await Promise.all([
-      tx.get(db.collection("wallets").where("ownerId", "==", data.clientId).limit(1)),
-      tx.get(db.collection("wallets").where("ownerId", "==", data.workerId).limit(1)),
-    ]);
-    if (clientWalletSnap.empty) throw new HttpError(404, "Client wallet not found");
-    if (workerWalletSnap.empty) throw new HttpError(404, "Worker wallet not found");
-
-    const wallets = {
-      client: clientWalletSnap.docs[0],
-      worker: workerWalletSnap.docs[0],
-    };
-    const updates = { client: {} as Record<string, number>, worker: {} as Record<string, number> };
-    for (const { party, field, delta } of effects) {
-      updates[party][field] = (updates[party][field] ?? wallets[party].data()[field]) + delta;
-    }
-    tx.update(wallets.client.ref, updates.client);
-    tx.update(wallets.worker.ref, updates.worker);
+    await releaseToWorker(tx, db, data, effects);
 
     const changes = { status, completedAt: new Date() };
     tx.update(escrowRef, changes);
     return fromDoc({ ...data, ...changes });
+  });
+}
+
+// Pays the escrowed amount out to the worker and records it in the ledger.
+// Runs inside the caller's transaction, so a failed check leaves everything
+// untouched. Shared by every path that releases funds.
+async function releaseToWorker(
+  tx: Transaction,
+  db: Firestore,
+  escrow: Record<string, any>,
+  effects: WalletEffect[],
+): Promise<void> {
+  const [clientWalletSnap, workerWalletSnap] = await Promise.all([
+    tx.get(db.collection("wallets").where("ownerId", "==", escrow.clientId).limit(1)),
+    tx.get(db.collection("wallets").where("ownerId", "==", escrow.workerId).limit(1)),
+  ]);
+  if (clientWalletSnap.empty) throw new HttpError(404, "Client wallet not found");
+  if (workerWalletSnap.empty) throw new HttpError(404, "Worker wallet not found");
+
+  const wallets = {
+    client: clientWalletSnap.docs[0],
+    worker: workerWalletSnap.docs[0],
+  };
+  if (wallets.client.data().currency !== wallets.worker.data().currency) {
+    throw new HttpError(409, "Client and worker wallets use different currencies");
+  }
+
+  const updates = { client: {} as Record<string, number>, worker: {} as Record<string, number> };
+  for (const { party, field, delta } of effects) {
+    updates[party][field] = (updates[party][field] ?? wallets[party].data()[field]) + delta;
+  }
+  tx.update(wallets.client.ref, updates.client);
+  tx.update(wallets.worker.ref, updates.worker);
+
+  // One release per job, so the job id makes a stable ledger id.
+  tx.set(db.collection("transactions").doc(`release-${escrow.jobId}`), {
+    jobId: escrow.jobId,
+    type: "escrow_release",
+    amount: escrow.amount,
+    currency: escrow.currency,
+    fromUserId: escrow.clientId,
+    toUserId: escrow.workerId,
+    createdAt: new Date(),
   });
 }
