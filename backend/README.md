@@ -73,6 +73,27 @@ Wallet effects for an amount `A`:
 
 `transition(current, event, actor, amount)` throws `409` for an invalid state/event pair, `403` for an actor that isn't allowed, and `400` for a non-positive amount.
 
+## Fund escrow
+
+`POST /api/escrow/fund` (client only) moves funds from the client's wallet into escrow for a job. It runs the `fund` transition from the state machine and creates `escrows/{jobId}` with status `in_escrow`. The wallet update and the escrow doc are written in one Firestore transaction. Jobs don't exist yet, so `jobId` is not validated against a job.
+
+Request body:
+
+```json
+{ "jobId": "job1", "workerId": "worker1", "amount": 500 }
+```
+
+Returns `201` with `{ "escrow": { jobId, clientId, workerId, amount, currency, status, createdAt, fundedAt } }`.
+
+| Status | Cause |
+|---|---|
+| `400` | Missing or invalid `jobId`, `workerId` or `amount` (must be greater than 0) |
+| `401` | Missing or invalid token |
+| `403` | Caller is not a client |
+| `404` | Worker or client wallet not found |
+| `402` | Wallet `balance` is lower than `amount` |
+| `409` | The job's escrow is already funded (or past `pending`) |
+
 ## Run
 
 ```
