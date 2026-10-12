@@ -19,7 +19,7 @@ export interface Escrow {
 }
 
 // Firestore returns Timestamps for stored dates; the mock and plain Dates pass through.
-const toDate = (value: any): Date => (typeof value?.toDate === "function" ? value.toDate() : value);
+export const toDate = (value: any): Date => (typeof value?.toDate === "function" ? value.toDate() : value);
 
 const fromDoc = (data: Record<string, any>): Escrow => ({
   ...(data as Escrow),
@@ -94,6 +94,17 @@ export async function fundEscrow(clientId: string, input: FundEscrowInput): Prom
       fundedAt: now,
     };
     tx.set(escrowRef, escrow);
+
+    // One fund per job, so the job id makes a stable ledger id.
+    tx.set(db.collection("transactions").doc(`fund-${input.jobId}`), {
+      jobId: input.jobId,
+      type: "escrow_fund",
+      amount: input.amount,
+      currency: wallet.currency,
+      fromUserId: clientId,
+      toUserId: input.workerId,
+      createdAt: now,
+    });
     return escrow;
   });
 }
@@ -148,7 +159,8 @@ export async function confirmCompletion(clientId: string, jobId: string): Promis
   });
 }
 
-// Pays the escrowed amount out to the worker and records it in the ledger.
+// Pays the escrowed amount out to the worker and records it in the ledger
+// (fundEscrow records the funding side).
 // Runs inside the caller's transaction, so a failed check leaves everything
 // untouched. Shared by every path that releases funds.
 async function releaseToWorker(
