@@ -247,6 +247,36 @@ Request body (optional):
 | `404` | Job or worker not found |
 | `409` | Job is not open, or the worker already applied |
 
+## Review applications
+
+`GET /api/jobs/:jobId/applications` (client only) lists the applications for one of the caller's own jobs, newest first. Each application includes the applicant's `id`, `name` and `email` from `workers/{workerId}`.
+
+Query parameters: `limit` (1 to 100, default 20) and `cursor` (the previous page's `nextCursor`, an ISO date-time). Needs a Firestore composite index on `applications` (`jobId` ascending, `createdAt` descending).
+
+Returns `200` with:
+
+```json
+{
+  "applications": [
+    {
+      "id": "job1_worker1", "jobId": "job1", "workerId": "worker1", "message": "I can start tomorrow",
+      "status": "pending", "createdAt": "2026-10-12T08:01:00.000Z",
+      "worker": { "id": "worker1", "name": "Amina", "email": "amina@example.com" }
+    }
+  ],
+  "nextCursor": null
+}
+```
+
+`nextCursor` is `null` on the last page.
+
+| Status | Cause |
+| --- | --- |
+| `400` | Invalid `limit` or `cursor` |
+| `401` | Missing or invalid token |
+| `403` | Caller is not a client, or does not own the job |
+| `404` | Job not found |
+
 ## Run
 
 ```
