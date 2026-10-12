@@ -1,8 +1,15 @@
 import { HttpError } from "../errors";
 
-export type EscrowStatus = "pending" | "in_escrow" | "disputed" | "completed" | "refunded";
+export type EscrowStatus =
+  | "pending"
+  | "in_escrow"
+  | "work_submitted"
+  | "disputed"
+  | "completed"
+  | "refunded";
 export type EscrowEvent =
   | "fund"
+  | "submit_work"
   | "release"
   | "refund"
   | "dispute"
@@ -46,6 +53,12 @@ export const TRANSITIONS: Readonly<
     fund: { to: "in_escrow", actors: ["client"], effects: toEscrow },
   },
   in_escrow: {
+    submit_work: { to: "work_submitted", actors: ["worker"], effects: noEffects },
+    release: { to: "completed", actors: ["admin"], effects: toWorker },
+    refund: { to: "refunded", actors: ["admin"], effects: toClient },
+    dispute: { to: "disputed", actors: ["client", "worker"], effects: noEffects },
+  },
+  work_submitted: {
     release: { to: "completed", actors: ["client", "admin"], effects: toWorker },
     refund: { to: "refunded", actors: ["admin"], effects: toClient },
     dispute: { to: "disputed", actors: ["client", "worker"], effects: noEffects },

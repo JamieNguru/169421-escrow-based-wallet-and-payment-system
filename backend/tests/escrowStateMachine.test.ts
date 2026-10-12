@@ -9,9 +9,17 @@ import {
   type EscrowStatus,
 } from "../src/services/escrowStateMachine";
 
-const STATUSES: EscrowStatus[] = ["pending", "in_escrow", "disputed", "completed", "refunded"];
+const STATUSES: EscrowStatus[] = [
+  "pending",
+  "in_escrow",
+  "work_submitted",
+  "disputed",
+  "completed",
+  "refunded",
+];
 const EVENTS: EscrowEvent[] = [
   "fund",
+  "submit_work",
   "release",
   "refund",
   "dispute",
@@ -22,11 +30,16 @@ const ACTORS: EscrowActor[] = ["client", "worker", "admin"];
 
 const VALID: [EscrowStatus, EscrowEvent, EscrowActor, EscrowStatus][] = [
   ["pending", "fund", "client", "in_escrow"],
-  ["in_escrow", "release", "client", "completed"],
+  ["in_escrow", "submit_work", "worker", "work_submitted"],
   ["in_escrow", "release", "admin", "completed"],
   ["in_escrow", "refund", "admin", "refunded"],
   ["in_escrow", "dispute", "client", "disputed"],
   ["in_escrow", "dispute", "worker", "disputed"],
+  ["work_submitted", "release", "client", "completed"],
+  ["work_submitted", "release", "admin", "completed"],
+  ["work_submitted", "refund", "admin", "refunded"],
+  ["work_submitted", "dispute", "client", "disputed"],
+  ["work_submitted", "dispute", "worker", "disputed"],
   ["disputed", "resolve_release", "admin", "completed"],
   ["disputed", "resolve_refund", "admin", "refunded"],
 ];
@@ -74,6 +87,7 @@ describe("escrow state machine", () => {
     expect(isTerminal("refunded")).toBe(true);
     expect(isTerminal("pending")).toBe(false);
     expect(isTerminal("in_escrow")).toBe(false);
+    expect(isTerminal("work_submitted")).toBe(false);
     expect(isTerminal("disputed")).toBe(false);
     for (const from of ["completed", "refunded"] as const) {
       for (const event of EVENTS) {
@@ -95,12 +109,20 @@ describe("escrow state machine", () => {
     ]);
   });
 
+  it("does not let a client release funds before the worker submits work", () => {
+    expect(statusOf(() => transition("in_escrow", "release", "client", 500))).toBe(403);
+  });
+
+  it("leaves balances untouched when work is submitted", () => {
+    expect(transition("in_escrow", "submit_work", "worker", 500).effects).toEqual([]);
+  });
+
   it("pays the worker on release and resolve_release", () => {
     const expected = [
       { party: "client", field: "escrowBalance", delta: -500 },
       { party: "worker", field: "balance", delta: 500 },
     ];
-    expect(transition("in_escrow", "release", "client", 500).effects).toEqual(expected);
+    expect(transition("work_submitted", "release", "client", 500).effects).toEqual(expected);
     expect(transition("disputed", "resolve_release", "admin", 500).effects).toEqual(expected);
   });
 
@@ -109,7 +131,7 @@ describe("escrow state machine", () => {
       { party: "client", field: "escrowBalance", delta: -500 },
       { party: "client", field: "balance", delta: 500 },
     ];
-    expect(transition("in_escrow", "refund", "admin", 500).effects).toEqual(expected);
+    expect(transition("work_submitted", "refund", "admin", 500).effects).toEqual(expected);
     expect(transition("disputed", "resolve_refund", "admin", 500).effects).toEqual(expected);
   });
 
