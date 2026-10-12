@@ -51,6 +51,28 @@ The backend calls the Flask trust-scoring service (`trust-scoring-ml/`) at `ML_S
 
 Features come from the optional `trustStats` object on the user's document, with placeholder defaults for anything missing, until job and escrow history can be computed. A missing user returns `404`; if the service is down, times out (5s) or errors, the response is `503`.
 
+## Escrow state machine
+
+`src/services/escrowStateMachine.ts` defines the fund lifecycle as a pure module. It validates a status change and returns the wallet changes it implies; the caller applies them (e.g. in a Firestore transaction). `completed` and `refunded` are terminal.
+
+| Event | From to | Allowed actor |
+|---|---|---|
+| `fund` | `pending` to `in_escrow` | client |
+| `release` | `in_escrow` to `completed` | client, admin |
+| `refund` | `in_escrow` to `refunded` | admin |
+| `dispute` | `in_escrow` to `disputed` | client, worker |
+| `resolve_release` | `disputed` to `completed` | admin |
+| `resolve_refund` | `disputed` to `refunded` | admin |
+
+Wallet effects for an amount `A`:
+
+- `fund`: client `balance` -A, client `escrowBalance` +A
+- `release`, `resolve_release`: client `escrowBalance` -A, worker `balance` +A
+- `refund`, `resolve_refund`: client `escrowBalance` -A, client `balance` +A
+- `dispute`: no change
+
+`transition(current, event, actor, amount)` throws `409` for an invalid state/event pair, `403` for an actor that isn't allowed, and `400` for a non-positive amount.
+
 ## Run
 
 ```
