@@ -277,6 +277,22 @@ Returns `200` with:
 | `403` | Caller is not a client, or does not own the job |
 | `404` | Job not found |
 
+## Select worker
+
+`POST /api/jobs/:jobId/select` (client only) picks one applicant for the caller's own job. Body: `{ "workerId": "worker1" }`.
+
+In one transaction the job moves to `assigned` with `workerId` set, the chosen application becomes `selected`, and every other application for the job becomes `rejected`. The job then no longer appears in browse jobs.
+
+Returns `200` with `{ "job": { ... }, "application": { ... } }`.
+
+| Status | Cause |
+| --- | --- |
+| `400` | Missing or invalid `workerId` |
+| `401` | Missing or invalid token |
+| `403` | Caller is not a client, or does not own the job |
+| `404` | Job not found, or that worker has not applied |
+| `409` | Job already has a worker |
+
 ## Run
 
 ```

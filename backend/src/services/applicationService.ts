@@ -2,8 +2,9 @@ import { getDb } from "../config/firebase";
 import { HttpError } from "../errors";
 import type { ApplyToJobInput } from "../validation/applications";
 import { toDate } from "./escrowService";
+import type { Job } from "./jobService";
 
-export type ApplicationStatus = "pending";
+export type ApplicationStatus = "pending" | "selected" | "rejected";
 
 export interface Application {
   id: string;
@@ -47,6 +48,50 @@ export async function applyToJob(
     };
     tx.set(applicationRef, data);
     return { id, ...data };
+  });
+}
+
+// Assigns the job to one applicant and rejects the rest, atomically.
+export async function selectWorker(
+  clientId: string,
+  jobId: string,
+  workerId: string,
+): Promise<{ job: Job; application: Application }> {
+  const db = getDb();
+  const jobRef = db.collection("jobs").doc(jobId);
+  const selectedRef = db.collection("applications").doc(`${jobId}_${workerId}`);
+  const applicationsQuery = db.collection("applications").where("jobId", "==", jobId);
+
+  return db.runTransaction(async (tx) => {
+    const [job, selected, all] = await Promise.all([
+      tx.get(jobRef),
+      tx.get(selectedRef),
+      tx.get(applicationsQuery),
+    ]);
+
+    if (!job.exists) throw new HttpError(404, "Job not found");
+    const jobData = job.data()!;
+    if (jobData.clientId !== clientId) {
+      throw new HttpError(403, "You do not have permission to select a worker for this job");
+    }
+    if (jobData.status !== "open") throw new HttpError(409, "Job already has a worker");
+    if (!selected.exists) throw new HttpError(404, "Application not found");
+
+    tx.update(jobRef, { status: "assigned", workerId });
+    tx.update(selectedRef, { status: "selected" });
+    for (const doc of all.docs) {
+      if (doc.id !== selectedRef.id) tx.update(doc.ref, { status: "rejected" });
+    }
+
+    return {
+      job: { ...(jobData as Job), id: jobId, status: "assigned", workerId, createdAt: toDate(jobData.createdAt) },
+      application: {
+        ...(selected.data() as Application),
+        id: selectedRef.id,
+        status: "selected",
+        createdAt: toDate(selected.data()!.createdAt),
+      },
+    };
   });
 }
 
