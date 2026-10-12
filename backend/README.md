@@ -42,6 +42,15 @@ router.get("/disputes", authenticate, requireRole("worker", "admin"), handler);
 - A missing, malformed, wrong-secret or expired token returns `401`.
 - A valid token with a role not in the list returns `403`.
 
+## Trust score
+
+The backend calls the Flask trust-scoring service (`trust-scoring-ml/`) at `ML_SERVICE_URL` (default `http://127.0.0.1:5000`) and returns `{ userId, role, trustLevel, probabilities }`.
+
+- `GET /api/trust-score/me` — a client or worker's own score.
+- `GET /api/trust-score/:userId?role=client|worker` — any client or worker's score, admin only.
+
+Features come from the optional `trustStats` object on the user's document, with placeholder defaults for anything missing, until job and escrow history can be computed. A missing user returns `404`; if the service is down, times out (5s) or errors, the response is `503`.
+
 ## Run
 
 ```
