@@ -54,7 +54,6 @@ export const TRANSITIONS: Readonly<
   },
   in_escrow: {
     submit_work: { to: "work_submitted", actors: ["worker"], effects: noEffects },
-    release: { to: "completed", actors: ["admin"], effects: toWorker },
     refund: { to: "refunded", actors: ["admin"], effects: toClient },
     dispute: { to: "disputed", actors: ["client", "worker"], effects: noEffects },
   },

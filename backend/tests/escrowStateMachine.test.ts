@@ -31,7 +31,6 @@ const ACTORS: EscrowActor[] = ["client", "worker", "admin"];
 const VALID: [EscrowStatus, EscrowEvent, EscrowActor, EscrowStatus][] = [
   ["pending", "fund", "client", "in_escrow"],
   ["in_escrow", "submit_work", "worker", "work_submitted"],
-  ["in_escrow", "release", "admin", "completed"],
   ["in_escrow", "refund", "admin", "refunded"],
   ["in_escrow", "dispute", "client", "disputed"],
   ["in_escrow", "dispute", "worker", "disputed"],
@@ -109,8 +108,10 @@ describe("escrow state machine", () => {
     ]);
   });
 
-  it("does not let a client release funds before the worker submits work", () => {
-    expect(statusOf(() => transition("in_escrow", "release", "client", 500))).toBe(403);
+  it("does not let anyone release funds before the worker submits work", () => {
+    for (const actor of ACTORS) {
+      expect(statusOf(() => transition("in_escrow", "release", actor, 500))).toBe(409);
+    }
   });
 
   it("leaves balances untouched when work is submitted", () => {

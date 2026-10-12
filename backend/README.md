@@ -60,7 +60,6 @@ Features come from the optional `trustStats` object on the user's document, with
 | `fund` | `pending` to `in_escrow` | client |
 | `submit_work` | `in_escrow` to `work_submitted` | worker |
 | `release` | `work_submitted` to `completed` | client, admin |
-| `release` | `in_escrow` to `completed` | admin |
 | `refund` | `in_escrow` or `work_submitted` to `refunded` | admin |
 | `dispute` | `in_escrow` or `work_submitted` to `disputed` | client, worker |
 | `resolve_release` | `disputed` to `completed` | admin |

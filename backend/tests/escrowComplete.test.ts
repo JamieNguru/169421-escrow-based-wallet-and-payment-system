@@ -151,6 +151,32 @@ describe("escrow completion endpoints", () => {
       expect(store.get("wallets/w1")).toMatchObject({ balance: 600, escrowBalance: 0 });
     });
 
+    test("records the release in the transactions collection", async () => {
+      await confirm();
+
+      expect(store.get("transactions/release-job1")).toMatchObject({
+        jobId: "job1",
+        type: "escrow_release",
+        amount: 500,
+        currency: "KES",
+        fromUserId: "client1",
+        toUserId: "worker1",
+      });
+      expect(store.get("transactions/release-job1")!.createdAt).toBeDefined();
+    });
+
+    test("returns 409 and moves no money when the wallet currencies differ", async () => {
+      store.set("wallets/w1", { ...store.get("wallets/w1")!, currency: "USD" });
+
+      const res = await confirm();
+
+      expect(res.status).toBe(409);
+      expect(store.get("escrows/job1")).toMatchObject({ status: "work_submitted" });
+      expect(store.get("wallets/c1")).toMatchObject({ balance: 500, escrowBalance: 500 });
+      expect(store.get("wallets/w1")).toMatchObject({ balance: 100 });
+      expect(store.has("transactions/release-job1")).toBe(false);
+    });
+
     test("returns 409 and moves no money when the worker has not submitted work", async () => {
       store.set("escrows/job2", { ...store.get("escrows/job1")!, jobId: "job2", status: "in_escrow" });
 
@@ -167,6 +193,7 @@ describe("escrow completion endpoints", () => {
 
       expect(res.status).toBe(409);
       expect(store.get("wallets/w1")).toMatchObject({ balance: 600 });
+      expect([...store.keys()].filter((k) => k.startsWith("transactions/"))).toHaveLength(1);
     });
 
     test("returns 404 when the escrow does not exist", async () => {
