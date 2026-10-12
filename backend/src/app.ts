@@ -4,6 +4,7 @@ import cors from "cors";
 import authRouter from "./routes/auth";
 import escrowRouter from "./routes/escrow";
 import healthRouter from "./routes/health";
+import jobsRouter from "./routes/jobs";
 import paymentsRouter from "./routes/payments";
 import transactionsRouter from "./routes/transactions";
 import trustScoreRouter from "./routes/trustScore";
@@ -23,6 +24,7 @@ export function createApp(): Express {
   app.use("/api/transactions", transactionsRouter);
   app.use("/api/payments", paymentsRouter);
   app.use("/api/wallet", walletRouter);
+  app.use("/api/jobs", jobsRouter);
 
   app.use(notFound);
   app.use(errorHandler);
