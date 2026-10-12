@@ -26,6 +26,10 @@ Create a Firebase project, enable Firestore, then download a service account key
 - Returns `201` with `{ id, name, email, phone, role }`, `400` for invalid input, `409` if the email is taken.
 - Users are stored in the `clients` or `workers` collection with a bcrypt `passwordHash`. An `emails/{email}` doc enforces uniqueness across both.
 
+`POST /api/auth/login` takes `{ "email", "password" }` and returns `{ token, user }`. The token is a JWT (HS256) with `sub` (user id) and `role`, valid for `JWT_EXPIRES_IN` (default `1d`) and signed with `JWT_SECRET`. Send it as `Authorization: Bearer <token>`. A wrong email or password returns the same `401`, and invalid input returns `400`. Admins sign in the same way.
+
+Admins cannot self-register. Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` in `.env` and run `npm run seed:admin` to create one in the `admins` collection.
+
 ## Run
 
 ```
