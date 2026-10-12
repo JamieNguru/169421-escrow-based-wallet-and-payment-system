@@ -3,7 +3,8 @@ import { toDate } from "./escrowService";
 
 export interface Transaction {
   id: string;
-  jobId: string;
+  // Absent on wallet-level entries such as withdrawals.
+  jobId?: string;
   type: string;
   amount: number;
   currency: string;

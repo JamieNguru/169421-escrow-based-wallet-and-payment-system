@@ -1,4 +1,4 @@
-import { getDarajaConfig } from "../config/daraja";
+import { getB2CConfig, getDarajaConfig, getDarajaCredentials } from "../config/daraja";
 import { HttpError } from "../errors";
 
 const REQUEST_TIMEOUT_MS = 10000;
@@ -25,7 +25,8 @@ const timestamp = (now: Date): string => now.toISOString().replace(/\D/g, "").sl
 async function getAccessToken(): Promise<string> {
   if (cachedToken && cachedToken.expiresAt > Date.now()) return cachedToken.value;
 
-  const { baseUrl, consumerKey, consumerSecret } = getDarajaConfig();
+  // STK and B2C share the same app credentials.
+  const { baseUrl, consumerKey, consumerSecret } = getDarajaCredentials();
   const basic = Buffer.from(`${consumerKey}:${consumerSecret}`).toString("base64");
   const res = await fetch(`${baseUrl}/oauth/v1/generate?grant_type=client_credentials`, {
     headers: { Authorization: `Basic ${basic}` },
@@ -96,6 +97,64 @@ export async function initiateStkPush(input: StkPushInput): Promise<StkPushResul
     checkoutRequestId: body.CheckoutRequestID,
     merchantRequestId: body.MerchantRequestID,
     customerMessage: typeof body.CustomerMessage === "string" ? body.CustomerMessage : "",
+  };
+}
+
+export interface B2CInput {
+  phone: string;
+  amount: number;
+  originatorConversationId: string;
+}
+
+export interface B2CResult {
+  conversationId: string;
+  originatorConversationId: string;
+}
+
+// Asks Daraja to pay the amount out to a phone. This only confirms the request
+// was queued; the outcome arrives later on the result or timeout URL.
+export async function initiateB2C(input: B2CInput): Promise<B2CResult> {
+  const config = getB2CConfig();
+
+  let body: Record<string, unknown>;
+  try {
+    const token = await getAccessToken();
+    const res = await fetch(`${config.baseUrl}/mpesa/b2c/v3/paymentrequest`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        OriginatorConversationID: input.originatorConversationId,
+        InitiatorName: config.initiatorName,
+        SecurityCredential: config.securityCredential,
+        CommandID: "BusinessPayment",
+        Amount: input.amount,
+        PartyA: config.shortcode,
+        PartyB: input.phone,
+        Remarks: "Worker withdrawal",
+        QueueTimeOutURL: config.timeoutUrl,
+        ResultURL: config.resultUrl,
+        Occassion: "Withdrawal",
+      }),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+    if (!res.ok) {
+      if (res.status === 401) cachedToken = null;
+      throw new Error(`b2c responded ${res.status}`);
+    }
+    body = (await res.json()) as Record<string, unknown>;
+  } catch (err) {
+    console.error("M-Pesa B2C failed:", err);
+    throw new HttpError(503, UNAVAILABLE);
+  }
+
+  if (body.ResponseCode !== "0" || typeof body.ConversationID !== "string") {
+    console.error("M-Pesa B2C rejected:", body);
+    throw new HttpError(502, UNAVAILABLE);
+  }
+
+  return {
+    conversationId: body.ConversationID,
+    originatorConversationId: input.originatorConversationId,
   };
 }
 
