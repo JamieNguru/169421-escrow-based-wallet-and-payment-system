@@ -12,10 +12,20 @@ export interface Escrow {
   status: EscrowStatus;
   createdAt: Date;
   fundedAt: Date;
+  workSubmittedAt?: Date;
+  completedAt?: Date;
 }
 
 // Firestore returns Timestamps for stored dates; the mock and plain Dates pass through.
 const toDate = (value: any): Date => (typeof value?.toDate === "function" ? value.toDate() : value);
+
+const fromDoc = (data: Record<string, any>): Escrow => ({
+  ...(data as Escrow),
+  createdAt: toDate(data.createdAt),
+  fundedAt: toDate(data.fundedAt),
+  ...(data.workSubmittedAt && { workSubmittedAt: toDate(data.workSubmittedAt) }),
+  ...(data.completedAt && { completedAt: toDate(data.completedAt) }),
+});
 
 // Returns the escrow for a job. Clients and workers can only see their own;
 // admins can see any.
@@ -33,7 +43,7 @@ export async function getEscrow(
     (user.role === "worker" && data.workerId === user.sub);
   if (!allowed) throw new HttpError(403, "you do not have permission to access this resource");
 
-  return { ...(data as Escrow), createdAt: toDate(data.createdAt), fundedAt: toDate(data.fundedAt) };
+  return fromDoc(data);
 }
 
 // Moves the amount from the client's balance into escrow and records the
@@ -83,5 +93,72 @@ export async function fundEscrow(clientId: string, input: FundEscrowInput): Prom
     };
     tx.set(escrowRef, escrow);
     return escrow;
+  });
+}
+
+// The assigned worker flags the job as done. Only the status changes; the
+// money stays in escrow until the client confirms.
+export async function markWorkComplete(workerId: string, jobId: string): Promise<Escrow> {
+  const db = getDb();
+  const escrowRef = db.collection("escrows").doc(jobId);
+
+  return db.runTransaction(async (tx) => {
+    const escrowSnap = await tx.get(escrowRef);
+    if (!escrowSnap.exists) throw new HttpError(404, "Escrow not found");
+
+    const data = escrowSnap.data()!;
+    if (data.workerId !== workerId) {
+      throw new HttpError(403, "you do not have permission to access this resource");
+    }
+
+    const { status } = transition(data.status, "submit_work", "worker", data.amount);
+    const changes = { status, workSubmittedAt: new Date() };
+    tx.update(escrowRef, changes);
+    return fromDoc({ ...data, ...changes });
+  });
+}
+
+// The client accepts the work: the escrowed amount moves to the worker's
+// balance and the escrow closes. Wallet and escrow change in one transaction.
+export async function confirmCompletion(clientId: string, jobId: string): Promise<Escrow> {
+  const db = getDb();
+  const escrowRef = db.collection("escrows").doc(jobId);
+
+  return db.runTransaction(async (tx) => {
+    const escrowSnap = await tx.get(escrowRef);
+    if (!escrowSnap.exists) throw new HttpError(404, "Escrow not found");
+
+    const data = escrowSnap.data()!;
+    if (data.clientId !== clientId) {
+      throw new HttpError(403, "you do not have permission to access this resource");
+    }
+
+    if (data.status === "in_escrow") {
+      throw new HttpError(409, "The worker has not marked this job complete yet");
+    }
+
+    const { status, effects } = transition(data.status, "release", "client", data.amount);
+
+    const [clientWalletSnap, workerWalletSnap] = await Promise.all([
+      tx.get(db.collection("wallets").where("ownerId", "==", data.clientId).limit(1)),
+      tx.get(db.collection("wallets").where("ownerId", "==", data.workerId).limit(1)),
+    ]);
+    if (clientWalletSnap.empty) throw new HttpError(404, "Client wallet not found");
+    if (workerWalletSnap.empty) throw new HttpError(404, "Worker wallet not found");
+
+    const wallets = {
+      client: clientWalletSnap.docs[0],
+      worker: workerWalletSnap.docs[0],
+    };
+    const updates = { client: {} as Record<string, number>, worker: {} as Record<string, number> };
+    for (const { party, field, delta } of effects) {
+      updates[party][field] = (updates[party][field] ?? wallets[party].data()[field]) + delta;
+    }
+    tx.update(wallets.client.ref, updates.client);
+    tx.update(wallets.worker.ref, updates.worker);
+
+    const changes = { status, completedAt: new Date() };
+    tx.update(escrowRef, changes);
+    return fromDoc({ ...data, ...changes });
   });
 }

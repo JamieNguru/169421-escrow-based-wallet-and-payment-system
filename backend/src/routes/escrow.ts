@@ -2,7 +2,7 @@ import { Router } from "express";
 
 import { HttpError } from "../errors";
 import { authenticate, requireRole } from "../middleware/auth";
-import { fundEscrow, getEscrow } from "../services/escrowService";
+import { confirmCompletion, fundEscrow, getEscrow, markWorkComplete } from "../services/escrowService";
 import { fundEscrowSchema } from "../validation/escrow";
 
 const router = Router();
@@ -17,6 +17,24 @@ router.post("/fund", authenticate, requireRole("client"), async (req, res, next)
   try {
     const escrow = await fundEscrow(req.user!.sub, parsed.data);
     res.status(201).json({ escrow });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/:jobId/complete", authenticate, requireRole("worker"), async (req, res, next) => {
+  try {
+    const escrow = await markWorkComplete(req.user!.sub, String(req.params.jobId));
+    res.json({ escrow });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/:jobId/confirm", authenticate, requireRole("client"), async (req, res, next) => {
+  try {
+    const escrow = await confirmCompletion(req.user!.sub, String(req.params.jobId));
+    res.json({ escrow });
   } catch (err) {
     next(err);
   }

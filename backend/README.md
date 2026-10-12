@@ -58,9 +58,11 @@ Features come from the optional `trustStats` object on the user's document, with
 | Event | From to | Allowed actor |
 |---|---|---|
 | `fund` | `pending` to `in_escrow` | client |
-| `release` | `in_escrow` to `completed` | client, admin |
-| `refund` | `in_escrow` to `refunded` | admin |
-| `dispute` | `in_escrow` to `disputed` | client, worker |
+| `submit_work` | `in_escrow` to `work_submitted` | worker |
+| `release` | `work_submitted` to `completed` | client, admin |
+| `release` | `in_escrow` to `completed` | admin |
+| `refund` | `in_escrow` or `work_submitted` to `refunded` | admin |
+| `dispute` | `in_escrow` or `work_submitted` to `disputed` | client, worker |
 | `resolve_release` | `disputed` to `completed` | admin |
 | `resolve_refund` | `disputed` to `refunded` | admin |
 
@@ -69,7 +71,7 @@ Wallet effects for an amount `A`:
 - `fund`: client `balance` -A, client `escrowBalance` +A
 - `release`, `resolve_release`: client `escrowBalance` -A, worker `balance` +A
 - `refund`, `resolve_refund`: client `escrowBalance` -A, client `balance` +A
-- `dispute`: no change
+- `submit_work`, `dispute`: no change
 
 `transition(current, event, actor, amount)` throws `409` for an invalid state/event pair, `403` for an actor that isn't allowed, and `400` for a non-positive amount.
 
@@ -105,6 +107,21 @@ Returns `200` with `{ "escrow": { jobId, clientId, workerId, amount, currency, s
 | `401` | Missing or invalid token |
 | `403` | Caller is not the escrow's client or worker, and not an admin |
 | `404` | No escrow exists for the job |
+
+## Mark work complete and confirm completion
+
+`POST /api/escrow/:jobId/complete` (worker only) lets the assigned worker flag the job as done. It runs the `submit_work` transition, sets `status` to `work_submitted` and stamps `workSubmittedAt`. No money moves.
+
+`POST /api/escrow/:jobId/confirm` (client only) lets the client who funded the job accept the work. It runs the `release` transition, moves the amount from the client's `escrowBalance` to the worker's `balance`, sets `status` to `completed` and stamps `completedAt`. The wallets and the escrow doc are updated in one Firestore transaction.
+
+Neither endpoint takes a body. Both return `200` with `{ "escrow": { jobId, clientId, workerId, amount, currency, status, createdAt, fundedAt, workSubmittedAt?, completedAt? } }`.
+
+| Status | Cause |
+|---|---|
+| `401` | Missing or invalid token |
+| `403` | Wrong role, or the caller is not the escrow's assigned worker (`complete`) or funding client (`confirm`) |
+| `404` | No escrow exists for the job, or the client or worker wallet is missing (`confirm`) |
+| `409` | `complete`: work was already submitted or the escrow is closed. `confirm`: the worker has not submitted work yet, or the escrow is already closed |
 
 ## Run
 
