@@ -18,3 +18,12 @@ export const initiateStkSchema = z.object({
 });
 
 export type InitiateStkInput = z.infer<typeof initiateStkSchema>;
+
+export const withdrawSchema = z.object({
+  amount: z
+    .number({ error: "amount must be a number" })
+    .int("amount must be a whole number of KES")
+    .positive("amount must be greater than 0"),
+});
+
+export type WithdrawInput = z.infer<typeof withdrawSchema>;

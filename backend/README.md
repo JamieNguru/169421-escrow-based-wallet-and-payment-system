@@ -165,6 +165,30 @@ Request body (`phone` is optional and falls back to the phone saved at registrat
 | `409` | The job's escrow is already funded |
 | `502` / `503` | Daraja rejected the request / could not be reached |
 
+## Withdraw to M-Pesa (B2C)
+
+`POST /api/payments/withdraw` (worker only) pays part of the worker's wallet balance out to the phone saved at registration through Daraja B2C. The balance is debited straight away and a `withdrawals/{OriginatorConversationID}` doc is stored with status `pending`, along with a `withdrawal` ledger entry. If Daraja refuses the request the wallet is refunded before the error is returned. Configure the B2C `DARAJA_*` variables in `.env` (see `.env.example`).
+
+Request body:
+
+```json
+{ "amount": 400 }
+```
+
+`amount` must be a whole number of KES. Returns `202` with `{ "withdrawal": { originatorConversationId, conversationId, workerId, amount, currency, phone, status, createdAt } }`.
+
+Daraja reports the outcome to two public endpoints, `POST /api/payments/b2c/result/:secret` and `POST /api/payments/b2c/timeout/:secret`. Set `DARAJA_B2C_RESULT_URL` and `DARAJA_B2C_TIMEOUT_URL` to these, with `DARAJA_B2C_CALLBACK_SECRET` as `:secret` (Daraja does not sign callbacks; a wrong secret gets `404`). A successful result marks the withdrawal `completed` and stores the receipt. A failed result or a timeout marks it `failed`, refunds the wallet and writes a `withdrawal_reversal` ledger entry. Repeated callbacks are ignored.
+
+| Status | Cause |
+|---|---|
+| `400` | Missing or invalid `amount` |
+| `401` | Missing or invalid token |
+| `402` | Insufficient wallet balance |
+| `403` | Caller is not a worker |
+| `404` | Worker or worker wallet not found |
+| `409` | No valid phone number on file |
+| `502` / `503` | Daraja rejected the request / could not be reached (wallet refunded) |
+
 ## Run
 
 ```
