@@ -94,6 +94,18 @@ Returns `201` with `{ "escrow": { jobId, clientId, workerId, amount, currency, s
 | `402` | Wallet `balance` is lower than `amount` |
 | `409` | The job's escrow is already funded (or past `pending`) |
 
+## View escrow status
+
+`GET /api/escrow/:jobId` returns the escrow for a job, including its current `status`. A client can view escrows they funded, a worker can view escrows assigned to them, and an admin can view any.
+
+Returns `200` with `{ "escrow": { jobId, clientId, workerId, amount, currency, status, createdAt, fundedAt } }`.
+
+| Status | Cause |
+|---|---|
+| `401` | Missing or invalid token |
+| `403` | Caller is not the escrow's client or worker, and not an admin |
+| `404` | No escrow exists for the job |
+
 ## Run
 
 ```
