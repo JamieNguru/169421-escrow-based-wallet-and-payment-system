@@ -167,7 +167,7 @@ Request body (`phone` is optional and falls back to the phone saved at registrat
 
 ## Withdraw to M-Pesa (B2C)
 
-`POST /api/payments/withdraw` (worker only) pays part of the worker's wallet balance out to the phone saved at registration through Daraja B2C. The balance is debited straight away and a `withdrawals/{OriginatorConversationID}` doc is stored with status `pending`, along with a `withdrawal` ledger entry. If Daraja refuses the request the wallet is refunded before the error is returned. Configure the B2C `DARAJA_*` variables in `.env` (see `.env.example`).
+`POST /api/payments/withdraw` (worker only) pays part of the worker's wallet balance out to the phone saved at registration through Daraja B2C. The balance is debited straight away and a `withdrawals/{OriginatorConversationID}` doc is stored with status `pending`, along with a `withdrawal` ledger entry. If Daraja refuses the request the wallet is refunded before the error is returned. Configure the B2C `DARAJA_*` variables in `.env` (see `.env.example`). Set `DARAJA_B2C_SHORTCODE` to the **Party A** value on your Daraja Test Credentials page; a wrong shortcode makes Daraja reject the payout with a misleading "The security credential is locked" error.
 
 Request body:
 
