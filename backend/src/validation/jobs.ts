@@ -17,3 +17,21 @@ export const postJobSchema = z.object({
 });
 
 export type PostJobInput = z.infer<typeof postJobSchema>;
+
+export const browseJobsQuerySchema = z.object({
+  limit: z.coerce
+    .number({ error: "limit must be a number" })
+    .int("limit must be a whole number")
+    .min(1, "limit must be at least 1")
+    .max(100, "limit must be at most 100")
+    .default(20),
+  cursor: z.iso.datetime({ error: "cursor must be an ISO date-time" }).pipe(z.coerce.date()).optional(),
+  currency: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .pipe(z.enum(SUPPORTED_CURRENCIES, { error: `currency must be one of ${SUPPORTED_CURRENCIES.join(", ")}` }))
+    .optional(),
+});
+
+export type BrowseJobsQuery = z.infer<typeof browseJobsQuerySchema>;
