@@ -76,7 +76,7 @@ Wallet effects for an amount `A`:
 
 ## Fund escrow
 
-`POST /api/escrow/fund` (client only) moves funds from the client's wallet into escrow for a job. It runs the `fund` transition from the state machine and creates `escrows/{jobId}` with status `in_escrow`. The wallet update and the escrow doc are written in one Firestore transaction. Jobs don't exist yet, so `jobId` is not validated against a job.
+`POST /api/escrow/fund` (client only) moves funds from the client's wallet into escrow for a job. It runs the `fund` transition from the state machine and creates `escrows/{jobId}` with status `in_escrow`. The wallet update, the escrow doc and an `escrow_fund` ledger record (`transactions/fund-{jobId}`) are written in one Firestore transaction. Jobs don't exist yet, so `jobId` is not validated against a job.
 
 Request body:
 
@@ -111,7 +111,7 @@ Returns `200` with `{ "escrow": { jobId, clientId, workerId, amount, currency, s
 
 `POST /api/escrow/:jobId/complete` (worker only) lets the assigned worker flag the job as done. It runs the `submit_work` transition, sets `status` to `work_submitted` and stamps `workSubmittedAt`. No money moves.
 
-`POST /api/escrow/:jobId/confirm` (client only) lets the client who funded the job accept the work. It runs the `release` transition, moves the amount from the client's `escrowBalance` to the worker's `balance`, sets `status` to `completed` and stamps `completedAt`. The wallets and the escrow doc are updated in one Firestore transaction.
+`POST /api/escrow/:jobId/confirm` (client only) lets the client who funded the job accept the work. It runs the `release` transition, moves the amount from the client's `escrowBalance` to the worker's `balance`, sets `status` to `completed` and stamps `completedAt`. The wallets, the escrow doc and an `escrow_release` ledger record (`transactions/release-{jobId}`) are written in one Firestore transaction.
 
 Neither endpoint takes a body. Both return `200` with `{ "escrow": { jobId, clientId, workerId, amount, currency, status, createdAt, fundedAt, workSubmittedAt?, completedAt? } }`.
 
@@ -121,6 +121,28 @@ Neither endpoint takes a body. Both return `200` with `{ "escrow": { jobId, clie
 | `403` | Wrong role, or the caller is not the escrow's assigned worker (`complete`) or funding client (`confirm`) |
 | `404` | No escrow exists for the job, or the client or worker wallet is missing (`confirm`) |
 | `409` | `complete`: work was already submitted or the escrow is closed. `confirm`: the worker has not submitted work yet, or the escrow is already closed |
+
+## View transaction history
+
+`GET /api/transactions` returns the caller's ledger entries (`transactions` collection), newest first. An entry is included when the caller is its `fromUserId` or `toUserId`. Any role can call it. An admin can pass `userId` to view another user's history.
+
+Query parameters (all optional):
+
+| Param | Meaning |
+|---|---|
+| `limit` | Page size, 1 to 100 (default 20) |
+| `cursor` | The `nextCursor` from the previous page |
+| `userId` | Admin only: whose history to return |
+
+Returns `200` with `{ "transactions": [{ id, jobId, type, amount, currency, fromUserId, toUserId, createdAt }], "nextCursor": "<ISO date-time>" | null }`. `type` is `escrow_fund` or `escrow_release`. `nextCursor` is `null` on the last page.
+
+| Status | Cause |
+|---|---|
+| `400` | Invalid `limit` or `cursor` |
+| `401` | Missing or invalid token |
+| `403` | `userId` passed by a non-admin |
+
+Firestore needs two composite indexes on `transactions`: `fromUserId` ascending + `createdAt` descending, and `toUserId` ascending + `createdAt` descending.
 
 ## Run
 

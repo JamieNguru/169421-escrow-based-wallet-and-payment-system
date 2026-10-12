@@ -83,6 +83,26 @@ describe("POST /api/escrow/fund", () => {
     expect(store.get("escrows/job1")).toMatchObject({ status: "in_escrow", amount: 500 });
   });
 
+  test("records the funding in the transactions collection", async () => {
+    await fund();
+
+    expect(store.get("transactions/fund-job1")).toMatchObject({
+      jobId: "job1",
+      type: "escrow_fund",
+      amount: 500,
+      currency: "KES",
+      fromUserId: "client1",
+      toUserId: "worker1",
+    });
+    expect(store.get("transactions/fund-job1")!.createdAt).toBeDefined();
+  });
+
+  test("does not record a transaction when funding fails", async () => {
+    await fund({ ...body, amount: 1001 });
+
+    expect([...store.keys()].filter((k) => k.startsWith("transactions/"))).toHaveLength(0);
+  });
+
   test("allows funding the exact wallet balance", async () => {
     await fund({ ...body, amount: 1000 });
 
