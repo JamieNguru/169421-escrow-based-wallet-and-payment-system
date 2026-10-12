@@ -14,6 +14,28 @@ export interface Escrow {
   fundedAt: Date;
 }
 
+// Firestore returns Timestamps for stored dates; the mock and plain Dates pass through.
+const toDate = (value: any): Date => (typeof value?.toDate === "function" ? value.toDate() : value);
+
+// Returns the escrow for a job. Clients and workers can only see their own;
+// admins can see any.
+export async function getEscrow(
+  jobId: string,
+  user: { sub: string; role: "client" | "worker" | "admin" },
+): Promise<Escrow> {
+  const snap = await getDb().collection("escrows").doc(jobId).get();
+  if (!snap.exists) throw new HttpError(404, "Escrow not found");
+
+  const data = snap.data()!;
+  const allowed =
+    user.role === "admin" ||
+    (user.role === "client" && data.clientId === user.sub) ||
+    (user.role === "worker" && data.workerId === user.sub);
+  if (!allowed) throw new HttpError(403, "you do not have permission to access this resource");
+
+  return { ...(data as Escrow), createdAt: toDate(data.createdAt), fundedAt: toDate(data.fundedAt) };
+}
+
 // Moves the amount from the client's balance into escrow and records the
 // escrow for the job. Everything happens in one transaction so a failed
 // check leaves the wallet untouched.
