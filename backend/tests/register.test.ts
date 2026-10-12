@@ -50,8 +50,29 @@ describe("POST /api/auth/register", () => {
       email: "jane@example.com",
       phone: "254712345678",
       role: "client",
+      walletId: "id2",
     });
     expect(JSON.stringify(res.body)).not.toMatch(/password/i);
+  });
+
+  test.each(["client", "worker"])("creates a zeroed KES wallet for a %s", async (role) => {
+    await request(app).post("/api/auth/register").send({ ...valid, role });
+
+    expect(store.get("wallets/id2")).toMatchObject({
+      ownerId: "id1",
+      ownerRole: role,
+      currency: "KES",
+      balance: 0,
+      escrowBalance: 0,
+    });
+  });
+
+  test("creates no wallet when the email is already taken", async () => {
+    await request(app).post("/api/auth/register").send(valid);
+    await request(app).post("/api/auth/register").send({ ...valid, role: "worker" });
+
+    const wallets = [...store.keys()].filter((path) => path.startsWith("wallets/"));
+    expect(wallets).toEqual(["wallets/id2"]);
   });
 
   test("stores workers in the workers collection", async () => {
@@ -114,6 +135,12 @@ describe("createUser (admin seeding)", () => {
     expect(admin).toEqual({ id: "id1", name: "Admin", email: "root@example.com", role: "admin" });
     expect(store.get("emails/root@example.com")).toEqual({ role: "admin", userId: "id1" });
     expect(store.get("admins/id1")).not.toHaveProperty("phone");
+  });
+
+  test("does not create a wallet for an admin", async () => {
+    await createUser({ name: "Admin", email: "root@example.com", password: "supersecret", role: "admin" });
+
+    expect([...store.keys()].some((path) => path.startsWith("wallets/"))).toBe(false);
   });
 
   test("rejects a duplicate email", async () => {
