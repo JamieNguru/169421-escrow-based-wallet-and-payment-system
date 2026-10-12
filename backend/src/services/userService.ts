@@ -24,18 +24,21 @@ export interface RegisteredUser {
   email: string;
   phone?: string;
   role: Role;
+  walletId?: string;
 }
 
 // Each role lives in its own collection, so email uniqueness is enforced
 // through an emails/{email} index doc written in the same transaction.
 // Public registration only allows client and worker (see registerSchema);
-// admins are created by the seed script.
+// admins are created by the seed script. Clients and workers also get a
+// wallet, written in the same transaction; admins don't hold funds.
 export async function createUser(input: NewUser): Promise<RegisteredUser> {
   const db = getDb();
   const passwordHash = await bcrypt.hash(input.password, BCRYPT_ROUNDS);
 
   const emailRef = db.collection("emails").doc(input.email);
   const userRef = db.collection(COLLECTIONS[input.role]).doc();
+  const walletRef = input.role === "admin" ? undefined : db.collection("wallets").doc();
 
   await db.runTransaction(async (tx) => {
     if ((await tx.get(emailRef)).exists) {
@@ -49,6 +52,16 @@ export async function createUser(input: NewUser): Promise<RegisteredUser> {
       passwordHash,
       createdAt: new Date(),
     });
+    if (walletRef) {
+      tx.set(walletRef, {
+        ownerId: userRef.id,
+        ownerRole: input.role,
+        currency: "KES",
+        balance: 0,
+        escrowBalance: 0,
+        createdAt: new Date(),
+      });
+    }
   });
 
   return {
@@ -57,6 +70,7 @@ export async function createUser(input: NewUser): Promise<RegisteredUser> {
     email: input.email,
     ...(input.phone && { phone: input.phone }),
     role: input.role,
+    ...(walletRef && { walletId: walletRef.id }),
   };
 }
 
