@@ -227,6 +227,26 @@ Request body:
 | `401` | Missing or invalid token |
 | `403` | Caller is not a client |
 
+## Apply for a job
+
+`POST /api/jobs/:jobId/apply` (worker only) records the calling worker's application in `applications/{jobId}_{workerId}` with status `pending`. `workerId` comes from the token, and the deterministic id means a worker can apply to a job only once.
+
+Request body (optional):
+
+```json
+{ "message": "I can start tomorrow" }
+```
+
+`message` is a string of at most 1000 characters. Returns `201` with `{ "application": { "id", "jobId", "workerId", "message", "status", "createdAt" } }` (`message` is omitted when not given).
+
+| Status | Cause |
+| --- | --- |
+| `400` | Invalid `message` |
+| `401` | Missing or invalid token |
+| `403` | Caller is not a worker |
+| `404` | Job or worker not found |
+| `409` | Job is not open, or the worker already applied |
+
 ## Run
 
 ```

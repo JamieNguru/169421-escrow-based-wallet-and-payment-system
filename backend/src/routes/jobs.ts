@@ -2,7 +2,9 @@ import { Router } from "express";
 
 import { HttpError } from "../errors";
 import { authenticate, requireRole } from "../middleware/auth";
+import { applyToJob } from "../services/applicationService";
 import { listOpenJobs, postJob } from "../services/jobService";
+import { applyToJobSchema } from "../validation/applications";
 import { browseJobsQuerySchema, postJobSchema } from "../validation/jobs";
 
 const router = Router();
@@ -17,6 +19,21 @@ router.post("/", authenticate, requireRole("client"), async (req, res, next) => 
   try {
     const job = await postJob(req.user!.sub, parsed.data);
     res.status(201).json({ job });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/:jobId/apply", authenticate, requireRole("worker"), async (req, res, next) => {
+  const parsed = applyToJobSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    const message = parsed.error.issues.map((issue) => issue.message).join("; ");
+    return next(new HttpError(400, message));
+  }
+
+  try {
+    const application = await applyToJob(req.user!.sub, String(req.params.jobId), parsed.data);
+    res.status(201).json({ application });
   } catch (err) {
     next(err);
   }
