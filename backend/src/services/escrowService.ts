@@ -2,8 +2,8 @@ import type { Firestore, Transaction } from "firebase-admin/firestore";
 
 import { getDb } from "../config/firebase";
 import { HttpError } from "../errors";
-import type { FundEscrowInput } from "../validation/escrow";
-import { transition, type EscrowStatus, type WalletEffect } from "./escrowStateMachine";
+import type { FundEscrowInput, RequestRefundInput } from "../validation/escrow";
+import { canTransition, transition, type EscrowStatus, type WalletEffect } from "./escrowStateMachine";
 
 export interface Escrow {
   jobId: string;
@@ -156,6 +156,59 @@ export async function confirmCompletion(clientId: string, jobId: string): Promis
     const changes = { status, completedAt: new Date() };
     tx.update(escrowRef, changes);
     return fromDoc({ ...data, ...changes });
+  });
+}
+
+export interface RefundRequest {
+  jobId: string;
+  clientId: string;
+  workerId: string;
+  amount: number;
+  currency: string;
+  reason: string;
+  status: "pending";
+  createdAt: Date;
+}
+
+// The client asks for their escrowed money back. Only an admin can run the
+// refund transition, so this just records the request; no money or escrow
+// status changes. One request per job, keyed by the job id.
+export async function requestRefund(
+  clientId: string,
+  jobId: string,
+  input: RequestRefundInput,
+): Promise<RefundRequest> {
+  const db = getDb();
+  const escrowRef = db.collection("escrows").doc(jobId);
+  const requestRef = db.collection("refundRequests").doc(jobId);
+
+  return db.runTransaction(async (tx) => {
+    const [escrowSnap, requestSnap] = await Promise.all([tx.get(escrowRef), tx.get(requestRef)]);
+    if (!escrowSnap.exists) throw new HttpError(404, "Escrow not found");
+
+    const data = escrowSnap.data()!;
+    if (data.clientId !== clientId) {
+      throw new HttpError(403, "you do not have permission to access this resource");
+    }
+    if (!canTransition(data.status, "refund", "admin")) {
+      throw new HttpError(409, `Cannot request a refund for an escrow that is ${data.status}`);
+    }
+    if (requestSnap.exists) {
+      throw new HttpError(409, "A refund has already been requested for this job");
+    }
+
+    const refundRequest: RefundRequest = {
+      jobId,
+      clientId,
+      workerId: data.workerId,
+      amount: data.amount,
+      currency: data.currency,
+      reason: input.reason,
+      status: "pending",
+      createdAt: new Date(),
+    };
+    tx.set(requestRef, refundRequest);
+    return refundRequest;
   });
 }
 
