@@ -10,3 +10,13 @@ export const fundEscrowSchema = z.object({
 });
 
 export type FundEscrowInput = z.infer<typeof fundEscrowSchema>;
+
+export const requestRefundSchema = z.object({
+  reason: z
+    .string({ error: "reason must be a string" })
+    .trim()
+    .min(1, "reason is required")
+    .max(1000, "reason must be at most 1000 characters"),
+});
+
+export type RequestRefundInput = z.infer<typeof requestRefundSchema>;

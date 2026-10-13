@@ -122,6 +122,20 @@ Neither endpoint takes a body. Both return `200` with `{ "escrow": { jobId, clie
 | `404` | No escrow exists for the job, or the client or worker wallet is missing (`confirm`) |
 | `409` | `complete`: work was already submitted or the escrow is closed. `confirm`: the worker has not submitted work yet, or the escrow is already closed |
 
+## Request refund
+
+`POST /api/escrow/:jobId/refund-request` (client only) lets the client who funded a job ask for their money back. Only an admin can run the `refund` transition, so this just stores `refundRequests/{jobId}` with status `pending`; no money moves and the escrow status does not change. The escrow must be `in_escrow` or `work_submitted`, and each job can have one request.
+
+Body: `{ "reason": "..." }` (1-1000 characters). Returns `201` with `{ "refundRequest": { jobId, clientId, workerId, amount, currency, reason, status, createdAt } }`.
+
+| Status | Cause |
+|---|---|
+| `400` | `reason` is missing, empty or longer than 1000 characters |
+| `401` | Missing or invalid token |
+| `403` | Wrong role, or the caller is not the client who funded the job |
+| `404` | No escrow exists for the job |
+| `409` | The escrow is not `in_escrow` or `work_submitted`, or a refund was already requested |
+
 ## View transaction history
 
 `GET /api/transactions` returns the caller's ledger entries (`transactions` collection), newest first. An entry is included when the caller is its `fromUserId` or `toUserId`. Any role can call it. An admin can pass `userId` to view another user's history.
