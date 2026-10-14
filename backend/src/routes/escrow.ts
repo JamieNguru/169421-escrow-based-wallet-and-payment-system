@@ -7,9 +7,10 @@ import {
   fundEscrow,
   getEscrow,
   markWorkComplete,
+  raiseDispute,
   requestRefund,
 } from "../services/escrowService";
-import { fundEscrowSchema, requestRefundSchema } from "../validation/escrow";
+import { fundEscrowSchema, raiseDisputeSchema, requestRefundSchema } from "../validation/escrow";
 
 const router = Router();
 
@@ -56,6 +57,22 @@ router.post("/:jobId/refund-request", authenticate, requireRole("client"), async
   try {
     const refundRequest = await requestRefund(req.user!.sub, String(req.params.jobId), parsed.data);
     res.status(201).json({ refundRequest });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/:jobId/dispute", authenticate, requireRole("client", "worker"), async (req, res, next) => {
+  const parsed = raiseDisputeSchema.safeParse(req.body);
+  if (!parsed.success) {
+    const message = parsed.error.issues.map((issue) => issue.message).join("; ");
+    return next(new HttpError(400, message));
+  }
+
+  try {
+    const { sub, role } = req.user!;
+    const dispute = await raiseDispute(sub, role as "client" | "worker", String(req.params.jobId), parsed.data);
+    res.status(201).json({ dispute });
   } catch (err) {
     next(err);
   }
