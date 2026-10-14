@@ -136,6 +136,20 @@ Body: `{ "reason": "..." }` (1-1000 characters). Returns `201` with `{ "refundRe
 | `404` | No escrow exists for the job |
 | `409` | The escrow is not `in_escrow` or `work_submitted`, or a refund was already requested |
 
+## Raise dispute
+
+`POST /api/escrow/:jobId/dispute` (client or worker) lets either party on a job dispute it. It runs the `dispute` transition, sets the escrow `status` to `disputed` and stamps `disputedAt`, and stores `disputes/{jobId}` with status `open`. No money moves; an admin resolves the dispute later. The escrow must be `in_escrow` or `work_submitted`, so each job can be disputed once. The caller must be the escrow's client or its assigned worker.
+
+Body: `{ "reason": "..." }` (1-1000 characters). Returns `201` with `{ "dispute": { jobId, clientId, workerId, amount, currency, raisedBy, raisedByRole, reason, previousStatus, status, createdAt } }`.
+
+| Status | Cause |
+|---|---|
+| `400` | `reason` is missing, empty or longer than 1000 characters |
+| `401` | Missing or invalid token |
+| `403` | Wrong role, or the caller is not the escrow's client or assigned worker |
+| `404` | No escrow exists for the job |
+| `409` | The escrow is not `in_escrow` or `work_submitted` (including already disputed) |
+
 ## View transaction history
 
 `GET /api/transactions` returns the caller's ledger entries (`transactions` collection), newest first. An entry is included when the caller is its `fromUserId` or `toUserId`. Any role can call it. An admin can pass `userId` to view another user's history.

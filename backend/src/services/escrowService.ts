@@ -2,7 +2,7 @@ import type { Firestore, Transaction } from "firebase-admin/firestore";
 
 import { getDb } from "../config/firebase";
 import { HttpError } from "../errors";
-import type { FundEscrowInput, RequestRefundInput } from "../validation/escrow";
+import type { FundEscrowInput, RaiseDisputeInput, RequestRefundInput } from "../validation/escrow";
 import { canTransition, transition, type EscrowStatus, type WalletEffect } from "./escrowStateMachine";
 
 export interface Escrow {
@@ -16,6 +16,7 @@ export interface Escrow {
   fundedAt: Date;
   workSubmittedAt?: Date;
   completedAt?: Date;
+  disputedAt?: Date;
 }
 
 // Firestore returns Timestamps for stored dates; the mock and plain Dates pass through.
@@ -27,6 +28,7 @@ const fromDoc = (data: Record<string, any>): Escrow => ({
   fundedAt: toDate(data.fundedAt),
   ...(data.workSubmittedAt && { workSubmittedAt: toDate(data.workSubmittedAt) }),
   ...(data.completedAt && { completedAt: toDate(data.completedAt) }),
+  ...(data.disputedAt && { disputedAt: toDate(data.disputedAt) }),
 });
 
 // Returns the escrow for a job. Clients and workers can only see their own;
@@ -209,6 +211,66 @@ export async function requestRefund(
     };
     tx.set(requestRef, refundRequest);
     return refundRequest;
+  });
+}
+
+export interface Dispute {
+  jobId: string;
+  clientId: string;
+  workerId: string;
+  amount: number;
+  currency: string;
+  raisedBy: string;
+  raisedByRole: "client" | "worker";
+  reason: string;
+  previousStatus: EscrowStatus;
+  status: "open";
+  createdAt: Date;
+}
+
+// The client or the assigned worker disputes the job. The escrow moves to
+// "disputed" and the money stays put until an admin resolves it. One dispute
+// per job, keyed by the job id; the state machine rejects a second one
+// because a disputed escrow cannot be disputed again.
+export async function raiseDispute(
+  userId: string,
+  role: "client" | "worker",
+  jobId: string,
+  input: RaiseDisputeInput,
+): Promise<Dispute> {
+  const db = getDb();
+  const escrowRef = db.collection("escrows").doc(jobId);
+  const disputeRef = db.collection("disputes").doc(jobId);
+
+  return db.runTransaction(async (tx) => {
+    const escrowSnap = await tx.get(escrowRef);
+    if (!escrowSnap.exists) throw new HttpError(404, "Escrow not found");
+
+    const data = escrowSnap.data()!;
+    const partyId = role === "client" ? data.clientId : data.workerId;
+    if (partyId !== userId) {
+      throw new HttpError(403, "you do not have permission to access this resource");
+    }
+
+    const { status } = transition(data.status, "dispute", role, data.amount);
+    const now = new Date();
+    tx.update(escrowRef, { status, disputedAt: now });
+
+    const dispute: Dispute = {
+      jobId,
+      clientId: data.clientId,
+      workerId: data.workerId,
+      amount: data.amount,
+      currency: data.currency,
+      raisedBy: userId,
+      raisedByRole: role,
+      reason: input.reason,
+      previousStatus: data.status,
+      status: "open",
+      createdAt: now,
+    };
+    tx.set(disputeRef, dispute);
+    return dispute;
   });
 }
 
