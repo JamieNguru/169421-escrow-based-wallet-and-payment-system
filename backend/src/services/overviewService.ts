@@ -45,14 +45,21 @@ function countBy(docs: Doc[], field: string): Counts {
   return counts;
 }
 
-function sumByCurrency(docs: Doc[]): Amounts {
+function sumByCurrency(docs: Doc[], amountOf: (data: Record<string, any>) => number = (d) => d.amount ?? 0): Amounts {
   const sums: Amounts = {};
   for (const doc of docs) {
-    const { currency = "unknown", amount = 0 } = doc.data();
-    sums[currency] = (sums[currency] ?? 0) + amount;
+    const data = doc.data();
+    const currency = data.currency ?? "unknown";
+    sums[currency] = (sums[currency] ?? 0) + amountOf(data);
   }
   return sums;
 }
+
+const mergeAmounts = (a: Amounts, b: Amounts): Amounts => {
+  const merged = { ...a };
+  for (const [currency, amount] of Object.entries(b)) merged[currency] = (merged[currency] ?? 0) + amount;
+  return merged;
+};
 
 const EAT_OFFSET_MS = 3 * 60 * 60 * 1000;
 
@@ -125,8 +132,15 @@ export async function getPlatformOverview(): Promise<PlatformOverview> {
       byStatus: countBy(escrows, "status"),
       amounts: {
         held: sumByCurrency(escrowsWhere("in_escrow", "work_submitted", "disputed")),
-        released: sumByCurrency(escrowsWhere("completed")),
-        refunded: sumByCurrency(escrowsWhere("refunded")),
+        // A split escrow counts its worker share as released and its client share as refunded.
+        released: mergeAmounts(
+          sumByCurrency(escrowsWhere("completed")),
+          sumByCurrency(escrowsWhere("split"), (d) => d.workerAmount ?? 0),
+        ),
+        refunded: mergeAmounts(
+          sumByCurrency(escrowsWhere("refunded")),
+          sumByCurrency(escrowsWhere("split"), (d) => d.clientAmount ?? 0),
+        ),
       },
     },
     payments: { total: payments.length, byStatus: countBy(payments, "status") },

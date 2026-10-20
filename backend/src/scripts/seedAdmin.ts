@@ -10,7 +10,7 @@ async function main() {
     email: process.env.ADMIN_EMAIL,
     password: process.env.ADMIN_PASSWORD,
   });
-  if (!parsed.success || parsed.data.password.length < 8) {
+  if (!parsed.success || !parsed.data.email || parsed.data.password.length < 8) {
     throw new Error("Set ADMIN_EMAIL (valid) and ADMIN_PASSWORD (at least 8 characters) in .env");
   }
 

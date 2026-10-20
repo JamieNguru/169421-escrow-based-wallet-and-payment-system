@@ -16,7 +16,8 @@ export function createApp(): Express {
   const app = express();
 
   app.use(cors());
-  app.use(express.json());
+  // Job and dispute photos arrive as data URLs, so allow more than the 100 kb default.
+  app.use(express.json({ limit: "2mb" }));
 
   app.use("/api/health", healthRouter);
   app.use("/api/auth", authRouter);

@@ -3,7 +3,7 @@ import { Router } from "express";
 import { HttpError } from "../errors";
 import { authenticate, requireRole } from "../middleware/auth";
 import { applyToJob, listJobApplications, selectWorker } from "../services/applicationService";
-import { listMyJobs, listOpenJobs, postJob } from "../services/jobService";
+import { getJob, listMyJobs, listOpenJobs, postJob } from "../services/jobService";
 import {
   applyToJobSchema,
   listApplicationsQuerySchema,
@@ -32,6 +32,14 @@ router.get("/mine", authenticate, requireRole("client", "worker"), async (req, r
   try {
     const { sub, role } = req.user! as { sub: string; role: "client" | "worker" };
     res.json({ jobs: await listMyJobs(sub, role) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/:jobId", authenticate, async (req, res, next) => {
+  try {
+    res.json({ job: await getJob(String(req.params.jobId)) });
   } catch (err) {
     next(err);
   }
@@ -88,9 +96,13 @@ router.get("/", authenticate, requireRole("worker"), async (req, res, next) => {
     return next(new HttpError(400, message));
   }
 
-  const { limit, cursor, currency } = parsed.data;
+  const { limit, cursor, currency, lat, lng } = parsed.data;
+  if ((lat === undefined) !== (lng === undefined)) {
+    return next(new HttpError(400, "lat and lng must be given together"));
+  }
   try {
-    res.json(await listOpenJobs({ limit, before: cursor, currency }));
+    const near = lat !== undefined && lng !== undefined ? { lat, lng } : undefined;
+    res.json(await listOpenJobs({ limit, before: cursor, currency, near }));
   } catch (err) {
     next(err);
   }

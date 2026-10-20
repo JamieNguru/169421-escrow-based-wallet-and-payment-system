@@ -1,4 +1,5 @@
 import { getDb } from "../config/firebase";
+import { HttpError } from "../errors";
 import { toDate } from "./escrowService";
 
 type Doc = { id: string; data: () => Record<string, any> };
@@ -22,8 +23,42 @@ export interface AdminDispute {
   workerId: string;
   workerName?: string;
   createdAt: Date;
+  photoCount?: number;
+  // Only on the detail response.
+  photos?: string[];
   decision?: string;
+  clientAmount?: number;
+  workerAmount?: number;
   resolution?: string;
+}
+
+// A dispute with the job title and both parties' names. Photos are heavy, so
+// only the detail view includes them; lists carry the count.
+async function withNames(docId: string, data: Record<string, any>, includePhotos: boolean): Promise<AdminDispute> {
+  const db = getDb();
+  const [job, clientName, workerName] = await Promise.all([
+    db.collection("jobs").doc(data.jobId ?? docId).get(),
+    nameOf("clients", data.clientId),
+    nameOf("workers", data.workerId),
+  ]);
+  const { photos, ...rest } = data;
+  const count = Array.isArray(photos) ? photos.length : 0;
+  return {
+    ...(rest as AdminDispute),
+    jobId: data.jobId ?? docId,
+    jobTitle: job.exists ? job.data()!.title : undefined,
+    clientName,
+    workerName,
+    createdAt: toDate(data.createdAt),
+    ...(count > 0 && { photoCount: count }),
+    ...(includePhotos && count > 0 && { photos }),
+  };
+}
+
+export async function getDispute(jobId: string): Promise<AdminDispute> {
+  const snap = await getDb().collection("disputes").doc(jobId).get();
+  if (!snap.exists) throw new HttpError(404, "Dispute not found");
+  return withNames(jobId, snap.data()!, true);
 }
 
 export interface AdminDisputePage {
@@ -47,24 +82,7 @@ export async function listDisputes({
   if (before) q = q.where("createdAt", "<", before);
   const snapshot = await q.orderBy("createdAt", "desc").limit(limit).get();
 
-  const disputes: AdminDispute[] = await Promise.all(
-    (snapshot.docs as Doc[]).map(async (doc) => {
-      const data = doc.data();
-      const [job, clientName, workerName] = await Promise.all([
-        db.collection("jobs").doc(data.jobId ?? doc.id).get(),
-        nameOf("clients", data.clientId),
-        nameOf("workers", data.workerId),
-      ]);
-      return {
-        ...(data as AdminDispute),
-        jobId: data.jobId ?? doc.id,
-        jobTitle: job.exists ? job.data()!.title : undefined,
-        clientName,
-        workerName,
-        createdAt: toDate(data.createdAt),
-      };
-    }),
-  );
+  const disputes = await Promise.all((snapshot.docs as Doc[]).map((doc) => withNames(doc.id, doc.data(), false)));
 
   const nextCursor = disputes.length === limit ? disputes[disputes.length - 1].createdAt.toISOString() : null;
   return { disputes, nextCursor };

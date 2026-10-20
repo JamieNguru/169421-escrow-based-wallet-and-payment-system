@@ -149,4 +149,17 @@ describe("GET /api/admin/overview", () => {
     expect(res.body.activity).toEqual({ paymentsToday: 2, failedPaymentsToday: 1, activeUsers: 2 });
     expect(res.body.trust.lowTrustUsers).toEqual([{ id: "w1", role: "worker", name: "James" }]);
   });
+
+  test("counts a split escrow's worker share as released and client share as refunded", async () => {
+    store.set("escrows/e1", { status: "completed", amount: 100, currency: "KES" });
+    store.set("escrows/e2", { status: "refunded", amount: 50, currency: "KES" });
+    store.set("escrows/e3", { status: "split", amount: 500, currency: "KES", clientAmount: 200, workerAmount: 300 });
+
+    const res = await get(tokenFor("a1", "admin"));
+
+    expect(res.body.escrows.amounts.released).toEqual({ KES: 400 });
+    expect(res.body.escrows.amounts.refunded).toEqual({ KES: 250 });
+    expect(res.body.escrows.amounts.held).toEqual({});
+  });
 });
+

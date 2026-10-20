@@ -27,6 +27,8 @@ const password = "supersecret";
 function seed(role: "client" | "worker" | "admin", id: string, email: string) {
   const collection = { client: "clients", worker: "workers", admin: "admins" }[role];
   store.set(`emails/${email}`, { role, userId: id });
+  // Only the client is indexed by phone: the seeded users share one number.
+  if (role === "client") store.set("phones/254712345678", { role, userId: id });
   store.set(`${collection}/${id}`, {
     name: "Jane Doe",
     email,
@@ -76,7 +78,7 @@ describe("POST /api/auth/login", () => {
     expect(wrongPassword.status).toBe(401);
     expect(unknownEmail.status).toBe(401);
     expect(unknownEmail.body).toEqual(wrongPassword.body);
-    expect(wrongPassword.body.error).toBe("Invalid email or password");
+    expect(wrongPassword.body.error).toBe("Invalid email/phone or password");
   });
 
   test("refuses a suspended account with 403, but only once the password is right", async () => {
@@ -102,8 +104,35 @@ describe("POST /api/auth/login", () => {
   });
 
   test.each([
+    ["0712345678", "a local number"],
+    ["+254712345678", "an international number"],
+    ["0712 345 678", "a number with spaces"],
+  ])("logs in with %s (%s)", async (identifier) => {
+    const res = await request(app).post("/api/auth/login").send({ identifier, password });
+
+    expect(res.status).toBe(200);
+    expect(res.body.user).toMatchObject({ id: "c1", role: "client", phone: "254712345678" });
+    expect(verifyToken(res.body.token)).toMatchObject({ sub: "c1", role: "client" });
+  });
+
+  test("accepts an email in the identifier field", async () => {
+    const res = await request(app).post("/api/auth/login").send({ identifier: "jane@example.com", password });
+
+    expect(res.status).toBe(200);
+  });
+
+  test("an unknown phone number and a wrong password give the same 401", async () => {
+    const unknown = await request(app).post("/api/auth/login").send({ identifier: "0799000000", password });
+    const wrong = await request(app).post("/api/auth/login").send({ identifier: "0712345678", password: "nope" });
+
+    expect(unknown.status).toBe(401);
+    expect(unknown.body).toEqual(wrong.body);
+  });
+
+  test.each([
     ["missing email", { password }],
     ["invalid email", { email: "nope", password }],
+    ["not a Kenyan number", { identifier: "12345", password }],
     ["missing password", { email: "jane@example.com" }],
     ["empty password", { email: "jane@example.com", password: "" }],
   ])("rejects %s with 400", async (_label, body) => {

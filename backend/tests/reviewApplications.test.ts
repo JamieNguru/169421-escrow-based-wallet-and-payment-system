@@ -2,6 +2,7 @@ import request from "supertest";
 
 import { createApp } from "../src/app";
 import { signToken } from "../src/config/jwt";
+import { clearTrustCache } from "../src/services/applicationService";
 
 // Minimal in-memory stand-in for the Firestore calls listJobApplications makes.
 const store = new Map<string, Record<string, any>>();
@@ -58,12 +59,21 @@ const application = (jobId: string, workerId: string, minute: number, message?: 
   });
 };
 
+const fetchMock = jest.fn();
+const scored = (trust_level: string) =>
+  Promise.resolve({ ok: true, status: 200, json: async () => ({ trust_level, probabilities: { [trust_level]: 1 } }) });
+
 describe("GET /api/jobs/:jobId/applications", () => {
   const app = createApp();
+  let errorSpy: jest.SpyInstance;
 
   beforeEach(() => {
     process.env.JWT_SECRET = "test-secret";
     store.clear();
+    clearTrustCache();
+    fetchMock.mockReset().mockImplementation(() => scored("High"));
+    global.fetch = fetchMock as unknown as typeof fetch;
+    errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
     store.set("jobs/job1", { clientId: "client1", title: "Job 1", status: "open", createdAt: at(0) });
     store.set("jobs/job2", { clientId: "client1", title: "Job 2", status: "open", createdAt: at(0) });
     for (const id of ["w1", "w2", "w3"]) {
@@ -74,6 +84,8 @@ describe("GET /api/jobs/:jobId/applications", () => {
     application("job1", "w3", 3);
     application("job2", "w1", 4);
   });
+
+  afterEach(() => errorSpy.mockRestore());
 
   const review = (jobId = "job1", query = "", auth: string | null = tokenFor("client1", "client")) => {
     const req = request(app).get(`/api/jobs/${jobId}/applications${query}`);
@@ -92,7 +104,7 @@ describe("GET /api/jobs/:jobId/applications", () => {
       workerId: "w1",
       message: "I can start tomorrow",
       status: "pending",
-      worker: { id: "w1", name: "Worker w1", email: "w1@example.com" },
+      worker: { id: "w1", name: "Worker w1", email: "w1@example.com", trustLevel: "High" },
     });
     expect(res.body.nextCursor).toBeNull();
     expect(JSON.stringify(res.body)).not.toContain("secret-hash");
@@ -154,5 +166,22 @@ describe("GET /api/jobs/:jobId/applications", () => {
 
     expect(res.status).toBe(404);
     expect(res.body.error).toBe("Job not found");
+  });
+
+  test("scores each worker once and reuses the result on the next load", async () => {
+    await review();
+    await review();
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  test("leaves the trust level out when the scoring service is down", async () => {
+    fetchMock.mockImplementation(() => Promise.reject(new TypeError("fetch failed")));
+
+    const res = await review();
+
+    expect(res.status).toBe(200);
+    expect(res.body.applications).toHaveLength(3);
+    expect(res.body.applications[0].worker).not.toHaveProperty("trustLevel");
   });
 });

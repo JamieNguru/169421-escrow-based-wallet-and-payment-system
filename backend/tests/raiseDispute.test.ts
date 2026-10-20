@@ -161,4 +161,37 @@ describe("POST /api/escrow/:jobId/dispute", () => {
   test("returns 401 without a token", async () => {
     expect((await request(app).post("/api/escrow/job1/dispute").send({ reason: "x" })).status).toBe(401);
   });
+
+  describe("photos", () => {
+    const photo = "data:image/jpeg;base64,/9j/4AAQSkZJRg==";
+
+    test("stores evidence photos on the dispute but only returns their count", async () => {
+      const res = await raise({ reason: "Gate half painted", photos: [photo, photo] });
+
+      expect(res.status).toBe(201);
+      expect(res.body.dispute.photoCount).toBe(2);
+      expect(res.body.dispute).not.toHaveProperty("photos");
+      expect(store.get("disputes/job1")!.photos).toEqual([photo, photo]);
+    });
+
+    test("a dispute without photos stores none", async () => {
+      await raise();
+
+      expect(store.get("disputes/job1")).not.toHaveProperty("photos");
+    });
+
+    test.each([
+      ["a non-image data URL", { photos: ["data:text/html;base64,PGgxPg=="] }],
+      ["a plain string", { photos: ["https://example.com/a.jpg"] }],
+      ["more than three photos", { photos: [photo, photo, photo, photo] }],
+      ["an oversized photo", { photos: [`data:image/png;base64,${"A".repeat(300_001)}`] }],
+    ])("rejects %s with 400 and creates no dispute", async (_label, extra) => {
+      const res = await raise({ reason: "Bad", ...extra });
+
+      expect(res.status).toBe(400);
+      expect(store.has("disputes/job1")).toBe(false);
+      expect(store.get("escrows/job1")).toMatchObject({ status: "in_escrow" });
+    });
+  });
 });
+

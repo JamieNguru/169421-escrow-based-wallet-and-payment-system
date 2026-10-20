@@ -2,7 +2,7 @@ import { Router } from "express";
 
 import { HttpError } from "../errors";
 import { authenticate, requireRole } from "../middleware/auth";
-import { listDisputes, listPayments } from "../services/adminListService";
+import { getDispute, listDisputes, listPayments } from "../services/adminListService";
 import { getPlatformOverview } from "../services/overviewService";
 import { getUser, listUsers, setUserStatus } from "../services/userService";
 import {
@@ -35,6 +35,14 @@ router.get("/disputes", async (req, res, next) => {
   try {
     const { status, limit, cursor } = parsed.data;
     res.json(await listDisputes({ status, limit, before: cursor }));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/disputes/:jobId", async (req, res, next) => {
+  try {
+    res.json({ dispute: await getDispute(String(req.params.jobId)) });
   } catch (err) {
     next(err);
   }

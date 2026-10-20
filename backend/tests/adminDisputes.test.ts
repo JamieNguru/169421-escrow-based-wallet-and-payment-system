@@ -97,4 +97,42 @@ describe("GET /api/admin/disputes", () => {
   test("403 for non-admins", async () => {
     expect((await list("", tokenFor("c1", "client"))).status).toBe(403);
   });
+
+  describe("with photos", () => {
+    const photo = "data:image/png;base64,iVBORw0KGgo=";
+
+    beforeEach(() => {
+      store.set("disputes/job1", { ...store.get("disputes/job1")!, photos: [photo, photo] });
+    });
+
+    test("the list carries only the photo count", async () => {
+      const res = await list("?status=open");
+
+      expect(res.body.disputes[0].photoCount).toBe(2);
+      expect(res.body.disputes[0]).not.toHaveProperty("photos");
+    });
+
+    test("the detail returns the photos with names and job title", async () => {
+      const res = await request(app).get("/api/admin/disputes/job1").set("Authorization", tokenFor("a1", "admin"));
+
+      expect(res.status).toBe(200);
+      expect(res.body.dispute).toMatchObject({
+        jobId: "job1",
+        jobTitle: "Plumbing repair",
+        clientName: "Mary W.",
+        workerName: "Peter N.",
+        photoCount: 2,
+        photos: [photo, photo],
+      });
+    });
+
+    test("detail is 404 for an unknown dispute and 403 for non-admins", async () => {
+      const missing = await request(app).get("/api/admin/disputes/nope").set("Authorization", tokenFor("a1", "admin"));
+      const client = await request(app).get("/api/admin/disputes/job1").set("Authorization", tokenFor("c1", "client"));
+
+      expect(missing.status).toBe(404);
+      expect(client.status).toBe(403);
+    });
+  });
 });
+

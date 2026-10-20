@@ -1,4 +1,5 @@
 import { getDb } from "../config/firebase";
+import { HttpError } from "../errors";
 import type { Currency } from "../validation/currency";
 import { toDate } from "./escrowService";
 import type { PostJobInput } from "../validation/jobs";
@@ -14,7 +15,30 @@ export interface Job {
   budget: number;
   currency: Currency;
   status: JobStatus;
+  location?: { label: string; lat?: number; lng?: number };
+  // Photos are only returned by getJob; lists carry the count instead.
+  photos?: string[];
+  photoCount?: number;
+  // Straight-line distance from the position the worker sent, when the job has coordinates.
+  distanceKm?: number;
   createdAt: Date;
+}
+
+// A job as lists and responses show it: photos replaced by their count.
+function listed(id: string, data: Record<string, any>): Job {
+  const { photos, ...rest } = data;
+  const count = Array.isArray(photos) ? photos.length : 0;
+  return { ...(rest as Job), id, createdAt: toDate(data.createdAt), ...(count > 0 && { photoCount: count }) };
+}
+
+const EARTH_RADIUS_KM = 6371;
+
+export function distanceKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const rad = (deg: number) => (deg * Math.PI) / 180;
+  const h =
+    Math.sin(rad(b.lat - a.lat) / 2) ** 2 +
+    Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(rad(b.lng - a.lng) / 2) ** 2;
+  return Math.round(2 * EARTH_RADIUS_KM * Math.asin(Math.sqrt(h)) * 10) / 10;
 }
 
 export async function postJob(clientId: string, input: PostJobInput): Promise<Job> {
@@ -26,11 +50,21 @@ export async function postJob(clientId: string, input: PostJobInput): Promise<Jo
     budget: input.budget,
     currency: input.currency,
     status: "open" as const,
+    ...(input.location && { location: input.location }),
+    ...(input.photos?.length && { photos: input.photos }),
     createdAt: new Date(),
   };
 
   await ref.set(data);
-  return { id: ref.id, ...data };
+  return listed(ref.id, data);
+}
+
+// One job with its photos, for anyone signed in: open jobs are public listings.
+export async function getJob(jobId: string): Promise<Job> {
+  const snap = await getDb().collection("jobs").doc(jobId).get();
+  if (!snap.exists) throw new HttpError(404, "Job not found");
+  const data = snap.data()!;
+  return { ...listed(jobId, data), ...(data.photos && { photos: data.photos }) };
 }
 
 export interface JobPage {
@@ -43,10 +77,12 @@ export async function listOpenJobs({
   limit,
   before,
   currency,
+  near,
 }: {
   limit: number;
   before?: Date;
   currency?: Currency;
+  near?: { lat: number; lng: number };
 }): Promise<JobPage> {
   let q = getDb().collection("jobs").where("status", "==", "open");
   if (currency) q = q.where("currency", "==", currency);
@@ -54,8 +90,10 @@ export async function listOpenJobs({
   const snapshot = await q.orderBy("createdAt", "desc").limit(limit).get();
 
   const jobs = snapshot.docs.map((doc) => {
-    const data = doc.data();
-    return { ...(data as Job), id: doc.id, createdAt: toDate(data.createdAt) };
+    const job = listed(doc.id, doc.data());
+    const { lat, lng } = job.location ?? {};
+    if (near && lat !== undefined && lng !== undefined) job.distanceKm = distanceKm(near, { lat, lng });
+    return job;
   });
 
   const nextCursor = jobs.length === limit ? jobs[jobs.length - 1].createdAt.toISOString() : null;
@@ -82,7 +120,7 @@ export async function listMyJobs(userId: string, role: "client" | "worker", limi
   return Promise.all(
     snapshot.docs.map(async (doc) => {
       const data = doc.data();
-      const job: MyJob = { ...(data as Job), id: doc.id, createdAt: toDate(data.createdAt) };
+      const job: MyJob = listed(doc.id, data);
 
       const counterpartyId = role === "client" ? data.workerId : data.clientId;
       const [escrow, counterparty, applications] = await Promise.all([

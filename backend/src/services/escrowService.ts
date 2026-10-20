@@ -8,7 +8,7 @@ import type {
   RequestRefundInput,
   ResolveDisputeInput,
 } from "../validation/escrow";
-import { canTransition, transition, type EscrowStatus, type WalletEffect } from "./escrowStateMachine";
+import { canTransition, splitEffects, transition, type EscrowStatus, type WalletEffect } from "./escrowStateMachine";
 
 export interface Escrow {
   jobId: string;
@@ -23,6 +23,8 @@ export interface Escrow {
   completedAt?: Date;
   refundedAt?: Date;
   disputedAt?: Date;
+  clientAmount?: number;
+  workerAmount?: number;
 }
 
 // Firestore returns Timestamps for stored dates; the mock and plain Dates pass through.
@@ -263,10 +265,16 @@ export interface Dispute {
   raisedBy: string;
   raisedByRole: "client" | "worker";
   reason: string;
+  // Evidence photos are only returned by the admin's dispute detail; lists carry the count.
+  photos?: string[];
+  photoCount?: number;
   previousStatus: EscrowStatus;
   status: "open" | "resolved";
   createdAt: Date;
   decision?: ResolveDisputeInput["decision"];
+  // Set for a split: the client's refund and the worker's payment add up to the amount.
+  clientAmount?: number;
+  workerAmount?: number;
   resolution?: string;
   resolvedBy?: string;
   resolvedAt?: Date;
@@ -309,17 +317,19 @@ export async function raiseDispute(
       raisedBy: userId,
       raisedByRole: role,
       reason: input.reason,
+      ...(input.photos?.length && { photos: input.photos }),
       previousStatus: data.status,
       status: "open",
       createdAt: now,
     };
     tx.set(disputeRef, dispute);
-    return dispute;
+    const { photos, ...shown } = dispute;
+    return { ...shown, ...(photos && { photoCount: photos.length }) };
   });
 }
 
 // An admin settles a disputed escrow: "release" pays the worker, "refund"
-// returns the money to the client. Escrow, dispute and wallets change in one
+// returns the money to the client, "split" divides it between them. Escrow, dispute and wallets change in one
 // transaction. The state machine rejects an escrow that is not disputed, so a
 // dispute can only be resolved once.
 export async function resolveDispute(
@@ -337,26 +347,41 @@ export async function resolveDispute(
     if (!disputeSnap.exists) throw new HttpError(404, "Dispute not found");
 
     const data = escrowSnap.data()!;
-    const release = input.decision === "release";
-    const { status, effects } = transition(
-      data.status,
-      release ? "resolve_release" : "resolve_refund",
-      "admin",
-      data.amount,
-    );
-
-    if (release) {
-      await releaseToWorker(tx, db, data, effects);
-    } else {
-      await refundToClient(tx, db, data, effects);
-    }
-
     const now = new Date();
-    tx.update(escrowRef, { status, [release ? "completedAt" : "refundedAt"]: now });
+    let escrowUpdate: Record<string, unknown>;
+    let outcome: Record<string, unknown> = {};
+
+    if (input.decision === "split") {
+      const clientAmount = roundMoney(input.clientAmount!);
+      if (clientAmount >= data.amount) {
+        throw new HttpError(400, "clientAmount must be less than the escrow amount; use refund to return it all");
+      }
+      const workerAmount = roundMoney(data.amount - clientAmount);
+      const { status } = transition(data.status, "resolve_split", "admin", data.amount);
+      await splitBetween(tx, db, data, clientAmount, workerAmount);
+      outcome = { clientAmount, workerAmount };
+      escrowUpdate = { status, completedAt: now, ...outcome };
+    } else {
+      const release = input.decision === "release";
+      const { status, effects } = transition(
+        data.status,
+        release ? "resolve_release" : "resolve_refund",
+        "admin",
+        data.amount,
+      );
+      if (release) {
+        await releaseToWorker(tx, db, data, effects);
+      } else {
+        await refundToClient(tx, db, data, effects);
+      }
+      escrowUpdate = { status, [release ? "completedAt" : "refundedAt"]: now };
+    }
+    tx.update(escrowRef, escrowUpdate);
 
     const resolved = {
       status: "resolved" as const,
       decision: input.decision,
+      ...outcome,
       resolution: input.resolution,
       resolvedBy: adminId,
       resolvedAt: now,
@@ -438,5 +463,56 @@ async function releaseToWorker(
     fromUserId: escrow.clientId,
     toUserId: escrow.workerId,
     createdAt: new Date(),
+  });
+}
+
+const roundMoney = (value: number) => Math.round(value * 100) / 100;
+
+// Divides the escrow between the two wallets and records both halves in the
+// ledger. Runs inside the caller's transaction, like releaseToWorker.
+async function splitBetween(
+  tx: Transaction,
+  db: Firestore,
+  escrow: Record<string, any>,
+  clientAmount: number,
+  workerAmount: number,
+): Promise<void> {
+  const [clientWalletSnap, workerWalletSnap] = await Promise.all([
+    tx.get(db.collection("wallets").where("ownerId", "==", escrow.clientId).limit(1)),
+    tx.get(db.collection("wallets").where("ownerId", "==", escrow.workerId).limit(1)),
+  ]);
+  if (clientWalletSnap.empty) throw new HttpError(404, "Client wallet not found");
+  if (workerWalletSnap.empty) throw new HttpError(404, "Worker wallet not found");
+
+  const wallets = { client: clientWalletSnap.docs[0], worker: workerWalletSnap.docs[0] };
+  if (wallets.client.data().currency !== wallets.worker.data().currency) {
+    throw new HttpError(409, "Client and worker wallets use different currencies");
+  }
+
+  const updates = { client: {} as Record<string, number>, worker: {} as Record<string, number> };
+  for (const { party, field, delta } of splitEffects(escrow.amount, clientAmount)) {
+    updates[party][field] = roundMoney((updates[party][field] ?? wallets[party].data()[field]) + delta);
+  }
+  tx.update(wallets.client.ref, updates.client);
+  tx.update(wallets.worker.ref, updates.worker);
+
+  const now = new Date();
+  tx.set(db.collection("transactions").doc(`refund-${escrow.jobId}`), {
+    jobId: escrow.jobId,
+    type: "escrow_refund",
+    amount: clientAmount,
+    currency: escrow.currency,
+    fromUserId: escrow.clientId,
+    toUserId: escrow.clientId,
+    createdAt: now,
+  });
+  tx.set(db.collection("transactions").doc(`release-${escrow.jobId}`), {
+    jobId: escrow.jobId,
+    type: "escrow_release",
+    amount: workerAmount,
+    currency: escrow.currency,
+    fromUserId: escrow.clientId,
+    toUserId: escrow.workerId,
+    createdAt: now,
   });
 }
