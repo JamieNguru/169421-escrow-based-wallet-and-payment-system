@@ -2,9 +2,16 @@ import { Router } from "express";
 
 import { HttpError } from "../errors";
 import { authenticate, requireRole } from "../middleware/auth";
+import { listDisputes, listPayments } from "../services/adminListService";
 import { getPlatformOverview } from "../services/overviewService";
 import { getUser, listUsers, setUserStatus } from "../services/userService";
-import { listUsersQuerySchema, roleSchema, setUserStatusSchema } from "../validation/admin";
+import {
+  listDisputesQuerySchema,
+  listPaymentsQuerySchema,
+  listUsersQuerySchema,
+  roleSchema,
+  setUserStatusSchema,
+} from "../validation/admin";
 
 const router = Router();
 
@@ -13,6 +20,36 @@ router.use(authenticate, requireRole("admin"));
 router.get("/overview", async (_req, res, next) => {
   try {
     res.json(await getPlatformOverview());
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/disputes", async (req, res, next) => {
+  const parsed = listDisputesQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    const message = parsed.error.issues.map((issue) => issue.message).join("; ");
+    return next(new HttpError(400, message));
+  }
+
+  try {
+    const { status, limit, cursor } = parsed.data;
+    res.json(await listDisputes({ status, limit, before: cursor }));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/payments", async (req, res, next) => {
+  const parsed = listPaymentsQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    const message = parsed.error.issues.map((issue) => issue.message).join("; ");
+    return next(new HttpError(400, message));
+  }
+
+  try {
+    const { status, limit, cursor } = parsed.data;
+    res.json(await listPayments({ status, limit, before: cursor }));
   } catch (err) {
     next(err);
   }

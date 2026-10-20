@@ -210,9 +210,17 @@ A suspended user gets `403` from `POST /api/auth/login`, after the password chec
   "withdrawals": { "total": 1, "byStatus": { "failed": 1 } },
   "disputes": { "total": 2, "open": 1, "resolved": 1 },
   "refundRequests": { "total": 2, "pending": 1, "approved": 1 },
-  "trust": { "scored": 2, "unavailable": 1, "byLevel": { "client": { "High": 2 }, "worker": {} } }
+  "trust": {
+    "scored": 2,
+    "unavailable": 1,
+    "byLevel": { "client": { "High": 2 }, "worker": {} },
+    "lowTrustUsers": [{ "id": "w1", "role": "worker", "name": "James Mwangi" }]
+  },
+  "activity": { "paymentsToday": 124, "failedPaymentsToday": 2, "activeUsers": 284 }
 }
 ```
+
+`activity` counts payments created since midnight East Africa Time (UTC+3) and users whose status is not `suspended`. `trust.lowTrustUsers` is the watch list for the admin dashboard.
 
 `amounts.held` covers escrows that are `in_escrow`, `work_submitted` or `disputed`, and each amount is summed per currency. `trust` scores every client and worker through the ML service (see Trust score), ten at a time; a user whose score can't be fetched counts as `unavailable` instead of failing the request, so this call is slow on a large user base.
 
@@ -220,6 +228,26 @@ A suspended user gets `403` from `POST /api/auth/login`, after the password chec
 |---|---|
 | `401` | Missing or invalid token |
 | `403` | The caller is not an admin |
+
+## Dashboard data endpoints
+
+These feed the frontend dashboards.
+
+`GET /api/wallet` (client or worker) returns the caller's wallet: `{ "wallet": { id, balance, escrowBalance, currency } }`. `404` if the user has no wallet.
+
+`GET /api/jobs/mine` (client or worker) returns `{ "jobs": [...] }`, newest first: the jobs a client posted, or the jobs assigned to a worker. Each job carries `escrowStatus` once funded, `counterpartyName` (the hired worker for a client, the client for a worker) and, for a client's open jobs, `applicantCount`.
+
+`GET /api/admin/disputes` (admin only) lists disputes newest first with `jobTitle`, `clientName` and `workerName`. Query: `status` (`open` or `resolved`), `limit` (1 to 100, default 25), `cursor` (the previous `nextCursor`). Returns `{ "disputes": [...], "nextCursor" }`.
+
+`GET /api/admin/payments` (admin only) merges STK pushes (`kind: "payment"`) and withdrawals (`kind: "withdrawal"`) into one feed, newest first, with `userName` and any `failureReason`. Query: `status` (`pending`, `completed` or `failed`), `limit`, `cursor`. Returns `{ "payments": [...], "nextCursor" }`.
+
+| Status | Cause |
+|---|---|
+| `400` | Invalid `status`, `limit` or `cursor` |
+| `401` | Missing or invalid token |
+| `403` | Wrong role |
+
+Firestore composite indexes needed: `jobs` on `clientId` + `createdAt` desc and on `workerId` + `createdAt` desc; `disputes` on `status` + `createdAt` desc; `payments` and `withdrawals` on `status` + `createdAt` desc.
 
 ## View transaction history
 

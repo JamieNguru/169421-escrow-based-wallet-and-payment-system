@@ -61,3 +61,44 @@ export async function listOpenJobs({
   const nextCursor = jobs.length === limit ? jobs[jobs.length - 1].createdAt.toISOString() : null;
   return { jobs, nextCursor };
 }
+
+export interface MyJob extends Job {
+  escrowStatus?: string;
+  // Clients see who they hired and how many applied; workers see the client.
+  counterpartyName?: string;
+  applicantCount?: number;
+}
+
+// The caller's own jobs, newest first: jobs a client posted, or jobs assigned to a worker.
+export async function listMyJobs(userId: string, role: "client" | "worker", limit = 50): Promise<MyJob[]> {
+  const db = getDb();
+  const snapshot = await db
+    .collection("jobs")
+    .where(role === "client" ? "clientId" : "workerId", "==", userId)
+    .orderBy("createdAt", "desc")
+    .limit(limit)
+    .get();
+
+  return Promise.all(
+    snapshot.docs.map(async (doc) => {
+      const data = doc.data();
+      const job: MyJob = { ...(data as Job), id: doc.id, createdAt: toDate(data.createdAt) };
+
+      const counterpartyId = role === "client" ? data.workerId : data.clientId;
+      const [escrow, counterparty, applications] = await Promise.all([
+        db.collection("escrows").doc(doc.id).get(),
+        counterpartyId
+          ? db.collection(role === "client" ? "workers" : "clients").doc(counterpartyId).get()
+          : undefined,
+        role === "client" && data.status === "open"
+          ? db.collection("applications").where("jobId", "==", doc.id).get()
+          : undefined,
+      ]);
+
+      if (escrow.exists) job.escrowStatus = escrow.data()!.status;
+      if (counterparty?.exists) job.counterpartyName = counterparty.data()!.name;
+      if (applications) job.applicantCount = applications.docs.length;
+      return job;
+    }),
+  );
+}

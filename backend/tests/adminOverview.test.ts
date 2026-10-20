@@ -103,6 +103,7 @@ describe("GET /api/admin/overview", () => {
       scored: 2,
       unavailable: 1,
       byLevel: { client: { High: 2 }, worker: {} },
+      lowTrustUsers: [],
     });
   });
 
@@ -112,7 +113,13 @@ describe("GET /api/admin/overview", () => {
     expect(res.status).toBe(200);
     expect(res.body.jobs).toEqual({ total: 0, byStatus: {} });
     expect(res.body.disputes).toEqual({ total: 0, open: 0, resolved: 0 });
-    expect(res.body.trust).toEqual({ scored: 0, unavailable: 0, byLevel: { client: {}, worker: {} } });
+    expect(res.body.trust).toEqual({
+      scored: 0,
+      unavailable: 0,
+      byLevel: { client: {}, worker: {} },
+      lowTrustUsers: [],
+    });
+    expect(res.body.activity).toEqual({ paymentsToday: 0, failedPaymentsToday: 0, activeUsers: 0 });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -122,5 +129,24 @@ describe("GET /api/admin/overview", () => {
 
   test.each(["client", "worker"] as const)("rejects a %s with 403", async (role) => {
     expect((await get(tokenFor("u1", role))).status).toBe(403);
+  });
+
+  test("reports today's payments, failures and active users, and lists low-trust users", async () => {
+    store.set("clients/c1", { name: "Kevin", status: "active" });
+    store.set("clients/c2", { name: "Mary", status: "suspended" });
+    store.set("workers/w1", { name: "James" });
+    store.set("payments/p1", { status: "failed", createdAt: new Date() });
+    store.set("payments/p2", { status: "completed", createdAt: new Date() });
+    store.set("payments/p3", { status: "completed", createdAt: new Date("2020-01-01T00:00:00Z") });
+    fetchMock.mockImplementation((_url: string, init: { body: string }) => {
+      const { role } = JSON.parse(init.body);
+      return flask(role === "worker" ? "Low" : "High");
+    });
+
+    const res = await get(tokenFor("a1", "admin"));
+
+    expect(res.status).toBe(200);
+    expect(res.body.activity).toEqual({ paymentsToday: 2, failedPaymentsToday: 1, activeUsers: 2 });
+    expect(res.body.trust.lowTrustUsers).toEqual([{ id: "w1", role: "worker", name: "James" }]);
   });
 });

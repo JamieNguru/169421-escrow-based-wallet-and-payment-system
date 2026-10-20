@@ -1,4 +1,5 @@
 import { getDb } from "../config/firebase";
+import { toDate } from "./escrowService";
 import { getTrustScore, type ScoredRole } from "./trustScoreService";
 
 const TRUST_BATCH_SIZE = 10;
@@ -22,7 +23,11 @@ export interface PlatformOverview {
     scored: number;
     unavailable: number;
     byLevel: Record<ScoredRole, Counts>;
+    // Users the model rates Low, for the admin watch list.
+    lowTrustUsers: Array<{ id: string; role: ScoredRole; name?: string }>;
   };
+  // Day figures use East Africa Time (UTC+3), where the platform operates.
+  activity: { paymentsToday: number; failedPaymentsToday: number; activeUsers: number };
 }
 
 type Doc = { id: string; data: () => Record<string, any> };
@@ -49,29 +54,39 @@ function sumByCurrency(docs: Doc[]): Amounts {
   return sums;
 }
 
+const EAT_OFFSET_MS = 3 * 60 * 60 * 1000;
+
+function startOfTodayEat(now = new Date()): Date {
+  const local = new Date(now.getTime() + EAT_OFFSET_MS);
+  local.setUTCHours(0, 0, 0, 0);
+  return new Date(local.getTime() - EAT_OFFSET_MS);
+}
+
 // Scores users through the ML service a batch at a time so a large user base
 // doesn't flood it. A user whose score can't be fetched counts as unavailable
 // instead of failing the whole overview.
-async function summariseTrust(users: Array<{ id: string; role: ScoredRole }>) {
+async function summariseTrust(users: Array<{ id: string; role: ScoredRole; name?: string }>) {
   const byLevel: Record<ScoredRole, Counts> = { client: {}, worker: {} };
+  const lowTrustUsers: Array<{ id: string; role: ScoredRole; name?: string }> = [];
   let scored = 0;
   let unavailable = 0;
 
   for (let i = 0; i < users.length; i += TRUST_BATCH_SIZE) {
     const batch = users.slice(i, i + TRUST_BATCH_SIZE);
     const results = await Promise.allSettled(batch.map((u) => getTrustScore(u.id, u.role)));
-    for (const result of results) {
+    for (const [index, result] of results.entries()) {
       if (result.status === "rejected") {
         unavailable++;
         continue;
       }
       const { role, trustLevel } = result.value;
       byLevel[role][trustLevel] = (byLevel[role][trustLevel] ?? 0) + 1;
+      if (trustLevel === "Low") lowTrustUsers.push(batch[index]);
       scored++;
     }
   }
 
-  return { scored, unavailable, byLevel };
+  return { scored, unavailable, byLevel, lowTrustUsers };
 }
 
 // Reads the collections in full and aggregates in memory, which is fine at
@@ -95,9 +110,13 @@ export async function getPlatformOverview(): Promise<PlatformOverview> {
   const refundCounts = countBy(refundRequests, "status");
 
   const trust = await summariseTrust([
-    ...clients.map((doc) => ({ id: doc.id, role: "client" as const })),
-    ...workers.map((doc) => ({ id: doc.id, role: "worker" as const })),
+    ...clients.map((doc) => ({ id: doc.id, role: "client" as const, name: doc.data().name })),
+    ...workers.map((doc) => ({ id: doc.id, role: "worker" as const, name: doc.data().name })),
   ]);
+
+  const startOfDay = startOfTodayEat();
+  const paymentsToday = payments.filter((doc) => toDate(doc.data().createdAt) >= startOfDay);
+  const activeUsers = [...clients, ...workers].filter((doc) => doc.data().status !== "suspended");
 
   return {
     jobs: { total: jobs.length, byStatus: countBy(jobs, "status") },
@@ -123,5 +142,10 @@ export async function getPlatformOverview(): Promise<PlatformOverview> {
       approved: refundCounts.approved ?? 0,
     },
     trust,
+    activity: {
+      paymentsToday: paymentsToday.length,
+      failedPaymentsToday: paymentsToday.filter((doc) => doc.data().status === "failed").length,
+      activeUsers: activeUsers.length,
+    },
   };
 }

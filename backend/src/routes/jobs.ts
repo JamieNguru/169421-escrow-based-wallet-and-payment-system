@@ -3,7 +3,7 @@ import { Router } from "express";
 import { HttpError } from "../errors";
 import { authenticate, requireRole } from "../middleware/auth";
 import { applyToJob, listJobApplications, selectWorker } from "../services/applicationService";
-import { listOpenJobs, postJob } from "../services/jobService";
+import { listMyJobs, listOpenJobs, postJob } from "../services/jobService";
 import {
   applyToJobSchema,
   listApplicationsQuerySchema,
@@ -23,6 +23,15 @@ router.post("/", authenticate, requireRole("client"), async (req, res, next) => 
   try {
     const job = await postJob(req.user!.sub, parsed.data);
     res.status(201).json({ job });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/mine", authenticate, requireRole("client", "worker"), async (req, res, next) => {
+  try {
+    const { sub, role } = req.user! as { sub: string; role: "client" | "worker" };
+    res.json({ jobs: await listMyJobs(sub, role) });
   } catch (err) {
     next(err);
   }
