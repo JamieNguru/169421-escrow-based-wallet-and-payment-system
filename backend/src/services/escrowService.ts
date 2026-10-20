@@ -2,7 +2,12 @@ import type { Firestore, Transaction } from "firebase-admin/firestore";
 
 import { getDb } from "../config/firebase";
 import { HttpError } from "../errors";
-import type { FundEscrowInput, RaiseDisputeInput, RequestRefundInput } from "../validation/escrow";
+import type {
+  FundEscrowInput,
+  RaiseDisputeInput,
+  RequestRefundInput,
+  ResolveDisputeInput,
+} from "../validation/escrow";
 import { canTransition, transition, type EscrowStatus, type WalletEffect } from "./escrowStateMachine";
 
 export interface Escrow {
@@ -16,6 +21,7 @@ export interface Escrow {
   fundedAt: Date;
   workSubmittedAt?: Date;
   completedAt?: Date;
+  refundedAt?: Date;
   disputedAt?: Date;
 }
 
@@ -28,6 +34,7 @@ const fromDoc = (data: Record<string, any>): Escrow => ({
   fundedAt: toDate(data.fundedAt),
   ...(data.workSubmittedAt && { workSubmittedAt: toDate(data.workSubmittedAt) }),
   ...(data.completedAt && { completedAt: toDate(data.completedAt) }),
+  ...(data.refundedAt && { refundedAt: toDate(data.refundedAt) }),
   ...(data.disputedAt && { disputedAt: toDate(data.disputedAt) }),
 });
 
@@ -224,8 +231,12 @@ export interface Dispute {
   raisedByRole: "client" | "worker";
   reason: string;
   previousStatus: EscrowStatus;
-  status: "open";
+  status: "open" | "resolved";
   createdAt: Date;
+  decision?: ResolveDisputeInput["decision"];
+  resolution?: string;
+  resolvedBy?: string;
+  resolvedAt?: Date;
 }
 
 // The client or the assigned worker disputes the job. The escrow moves to
@@ -271,6 +282,85 @@ export async function raiseDispute(
     };
     tx.set(disputeRef, dispute);
     return dispute;
+  });
+}
+
+// An admin settles a disputed escrow: "release" pays the worker, "refund"
+// returns the money to the client. Escrow, dispute and wallets change in one
+// transaction. The state machine rejects an escrow that is not disputed, so a
+// dispute can only be resolved once.
+export async function resolveDispute(
+  adminId: string,
+  jobId: string,
+  input: ResolveDisputeInput,
+): Promise<Dispute> {
+  const db = getDb();
+  const escrowRef = db.collection("escrows").doc(jobId);
+  const disputeRef = db.collection("disputes").doc(jobId);
+
+  return db.runTransaction(async (tx) => {
+    const [escrowSnap, disputeSnap] = await Promise.all([tx.get(escrowRef), tx.get(disputeRef)]);
+    if (!escrowSnap.exists) throw new HttpError(404, "Escrow not found");
+    if (!disputeSnap.exists) throw new HttpError(404, "Dispute not found");
+
+    const data = escrowSnap.data()!;
+    const release = input.decision === "release";
+    const { status, effects } = transition(
+      data.status,
+      release ? "resolve_release" : "resolve_refund",
+      "admin",
+      data.amount,
+    );
+
+    if (release) {
+      await releaseToWorker(tx, db, data, effects);
+    } else {
+      await refundToClient(tx, db, data, effects);
+    }
+
+    const now = new Date();
+    tx.update(escrowRef, { status, [release ? "completedAt" : "refundedAt"]: now });
+
+    const resolved = {
+      status: "resolved" as const,
+      decision: input.decision,
+      resolution: input.resolution,
+      resolvedBy: adminId,
+      resolvedAt: now,
+    };
+    tx.update(disputeRef, resolved);
+    return { ...(disputeSnap.data() as Dispute), ...resolved };
+  });
+}
+
+// Returns the escrowed amount to the client's balance and records it in the
+// ledger. Runs inside the caller's transaction, like releaseToWorker.
+async function refundToClient(
+  tx: Transaction,
+  db: Firestore,
+  escrow: Record<string, any>,
+  effects: WalletEffect[],
+): Promise<void> {
+  const walletSnap = await tx.get(db.collection("wallets").where("ownerId", "==", escrow.clientId).limit(1));
+  if (walletSnap.empty) throw new HttpError(404, "Client wallet not found");
+
+  const walletDoc = walletSnap.docs[0];
+  const wallet = walletDoc.data();
+  const updates: Record<string, number> = {};
+  for (const { field, delta } of effects) {
+    updates[field] = (updates[field] ?? wallet[field]) + delta;
+  }
+  tx.update(walletDoc.ref, updates);
+
+  // One refund per job, so the job id makes a stable ledger id.
+  tx.set(db.collection("transactions").doc(`refund-${escrow.jobId}`), {
+    jobId: escrow.jobId,
+    type: "escrow_refund",
+    amount: escrow.amount,
+    currency: escrow.currency,
+    fromUserId: escrow.clientId,
+    toUserId: escrow.clientId,
+    createdAt: new Date(),
   });
 }
 

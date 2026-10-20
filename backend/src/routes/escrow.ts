@@ -9,8 +9,14 @@ import {
   markWorkComplete,
   raiseDispute,
   requestRefund,
+  resolveDispute,
 } from "../services/escrowService";
-import { fundEscrowSchema, raiseDisputeSchema, requestRefundSchema } from "../validation/escrow";
+import {
+  fundEscrowSchema,
+  raiseDisputeSchema,
+  requestRefundSchema,
+  resolveDisputeSchema,
+} from "../validation/escrow";
 
 const router = Router();
 
@@ -73,6 +79,21 @@ router.post("/:jobId/dispute", authenticate, requireRole("client", "worker"), as
     const { sub, role } = req.user!;
     const dispute = await raiseDispute(sub, role as "client" | "worker", String(req.params.jobId), parsed.data);
     res.status(201).json({ dispute });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/:jobId/resolve-dispute", authenticate, requireRole("admin"), async (req, res, next) => {
+  const parsed = resolveDisputeSchema.safeParse(req.body);
+  if (!parsed.success) {
+    const message = parsed.error.issues.map((issue) => issue.message).join("; ");
+    return next(new HttpError(400, message));
+  }
+
+  try {
+    const dispute = await resolveDispute(req.user!.sub, String(req.params.jobId), parsed.data);
+    res.json({ dispute });
   } catch (err) {
     next(err);
   }

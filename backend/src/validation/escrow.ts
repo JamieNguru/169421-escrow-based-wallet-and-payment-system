@@ -24,3 +24,14 @@ export type RequestRefundInput = z.infer<typeof requestRefundSchema>;
 export const raiseDisputeSchema = z.object({ reason: reasonSchema });
 
 export type RaiseDisputeInput = z.infer<typeof raiseDisputeSchema>;
+
+export const resolveDisputeSchema = z.object({
+  decision: z.enum(["release", "refund"], { error: "decision must be release or refund" }),
+  resolution: z
+    .string({ error: "resolution must be a string" })
+    .trim()
+    .min(1, "resolution is required")
+    .max(1000, "resolution must be at most 1000 characters"),
+});
+
+export type ResolveDisputeInput = z.infer<typeof resolveDisputeSchema>;
