@@ -136,6 +136,19 @@ Body: `{ "reason": "..." }` (1-1000 characters). Returns `201` with `{ "refundRe
 | `404` | No escrow exists for the job |
 | `409` | The escrow is not `in_escrow` or `work_submitted`, or a refund was already requested |
 
+## Process refund
+
+`POST /api/escrow/:jobId/process-refund` (admin only) approves a pending refund request. It runs the `refund` transition, returns the escrowed money to the client's balance, sets the escrow to `refunded` and stamps `refundedAt`, and marks `refundRequests/{jobId}` as `approved` with `processedBy` and `processedAt`. It writes one ledger entry (`refund-{jobId}`). A request can only be processed once.
+
+No body. Returns `200` with `{ "refundRequest": { ...request fields, status: "approved", processedBy, processedAt } }`.
+
+| Status | Cause |
+|---|---|
+| `401` | Missing or invalid token |
+| `403` | The caller is not an admin |
+| `404` | No escrow, refund request or client wallet exists for the job |
+| `409` | The request was already processed, or the escrow is no longer `in_escrow` or `work_submitted` (for example it was disputed or released) |
+
 ## Raise dispute
 
 `POST /api/escrow/:jobId/dispute` (client or worker) lets either party on a job dispute it. It runs the `dispute` transition, sets the escrow `status` to `disputed` and stamps `disputedAt`, and stores `disputes/{jobId}` with status `open`. No money moves; an admin resolves the dispute later. The escrow must be `in_escrow` or `work_submitted`, so each job can be disputed once. The caller must be the escrow's client or its assigned worker.
