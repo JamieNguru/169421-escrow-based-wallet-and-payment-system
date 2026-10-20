@@ -175,8 +175,10 @@ export interface RefundRequest {
   amount: number;
   currency: string;
   reason: string;
-  status: "pending";
+  status: "pending" | "approved";
   createdAt: Date;
+  processedBy?: string;
+  processedAt?: Date;
 }
 
 // The client asks for their escrowed money back. Only an admin can run the
@@ -218,6 +220,37 @@ export async function requestRefund(
     };
     tx.set(requestRef, refundRequest);
     return refundRequest;
+  });
+}
+
+// An admin approves a pending refund request: the escrowed money goes back to
+// the client. Escrow, request and wallet change in one transaction. The state
+// machine rejects an escrow that has since been disputed, released or refunded.
+export async function processRefund(adminId: string, jobId: string): Promise<RefundRequest> {
+  const db = getDb();
+  const escrowRef = db.collection("escrows").doc(jobId);
+  const requestRef = db.collection("refundRequests").doc(jobId);
+
+  return db.runTransaction(async (tx) => {
+    const [escrowSnap, requestSnap] = await Promise.all([tx.get(escrowRef), tx.get(requestRef)]);
+    if (!escrowSnap.exists) throw new HttpError(404, "Escrow not found");
+    if (!requestSnap.exists) throw new HttpError(404, "Refund request not found");
+
+    const request = requestSnap.data() as RefundRequest;
+    if (request.status !== "pending") {
+      throw new HttpError(409, "This refund request has already been processed");
+    }
+
+    const data = escrowSnap.data()!;
+    const { status, effects } = transition(data.status, "refund", "admin", data.amount);
+    await refundToClient(tx, db, data, effects);
+
+    const now = new Date();
+    tx.update(escrowRef, { status, refundedAt: now });
+
+    const processed = { status: "approved" as const, processedBy: adminId, processedAt: now };
+    tx.update(requestRef, processed);
+    return { ...request, ...processed };
   });
 }
 

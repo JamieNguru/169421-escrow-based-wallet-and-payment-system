@@ -7,6 +7,7 @@ import {
   fundEscrow,
   getEscrow,
   markWorkComplete,
+  processRefund,
   raiseDispute,
   requestRefund,
   resolveDispute,
@@ -68,7 +69,16 @@ router.post("/:jobId/refund-request", authenticate, requireRole("client"), async
   }
 });
 
-router.post("/:jobId/dispute", authenticate, requireRole("client", "worker"), async (req, res, next) => {
+router.post("/:jobId/process-refund", authenticate, requireRole("admin"), async (req, res, next) => {
+  try {
+    const refundRequest = await processRefund(req.user!.sub, String(req.params.jobId));
+    res.json({ refundRequest });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/:jobId/dispute",authenticate, requireRole("client", "worker"), async (req, res, next) => {
   const parsed = raiseDisputeSchema.safeParse(req.body);
   if (!parsed.success) {
     const message = parsed.error.issues.map((issue) => issue.message).join("; ");
