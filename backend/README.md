@@ -194,6 +194,33 @@ A suspended user gets `403` from `POST /api/auth/login`, after the password chec
 | `403` | The caller is not an admin, or the target is an admin account |
 | `404` | No user with that role and id |
 
+## Monitor platform activity (admin)
+
+`GET /api/admin/overview` (admin only) returns a snapshot of platform activity, aggregated from the `jobs`, `escrows`, `payments`, `withdrawals`, `disputes`, `refundRequests`, `clients` and `workers` collections. Returns `200` with:
+
+```json
+{
+  "jobs": { "total": 3, "byStatus": { "open": 1, "assigned": 2 } },
+  "escrows": {
+    "total": 4,
+    "byStatus": { "in_escrow": 1, "completed": 3 },
+    "amounts": { "held": { "KES": 150 }, "released": { "KES": 200 }, "refunded": { "USD": 30 } }
+  },
+  "payments": { "total": 2, "byStatus": { "pending": 1, "completed": 1 } },
+  "withdrawals": { "total": 1, "byStatus": { "failed": 1 } },
+  "disputes": { "total": 2, "open": 1, "resolved": 1 },
+  "refundRequests": { "total": 2, "pending": 1, "approved": 1 },
+  "trust": { "scored": 2, "unavailable": 1, "byLevel": { "client": { "High": 2 }, "worker": {} } }
+}
+```
+
+`amounts.held` covers escrows that are `in_escrow`, `work_submitted` or `disputed`, and each amount is summed per currency. `trust` scores every client and worker through the ML service (see Trust score), ten at a time; a user whose score can't be fetched counts as `unavailable` instead of failing the request, so this call is slow on a large user base.
+
+| Status | Cause |
+|---|---|
+| `401` | Missing or invalid token |
+| `403` | The caller is not an admin |
+
 ## View transaction history
 
 `GET /api/transactions` returns the caller's ledger entries (`transactions` collection), newest first. An entry is included when the caller is its `fromUserId` or `toUserId`. Any role can call it. An admin can pass `userId` to view another user's history.

@@ -2,12 +2,21 @@ import { Router } from "express";
 
 import { HttpError } from "../errors";
 import { authenticate, requireRole } from "../middleware/auth";
+import { getPlatformOverview } from "../services/overviewService";
 import { getUser, listUsers, setUserStatus } from "../services/userService";
 import { listUsersQuerySchema, roleSchema, setUserStatusSchema } from "../validation/admin";
 
 const router = Router();
 
 router.use(authenticate, requireRole("admin"));
+
+router.get("/overview", async (_req, res, next) => {
+  try {
+    res.json(await getPlatformOverview());
+  } catch (err) {
+    next(err);
+  }
+});
 
 router.get("/users", async (req, res, next) => {
   const parsed = listUsersQuerySchema.safeParse(req.query);
