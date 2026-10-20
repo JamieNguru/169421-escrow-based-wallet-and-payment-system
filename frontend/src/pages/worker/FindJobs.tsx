@@ -76,13 +76,13 @@ export default function FindJobs() {
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search for a job, e.g. plumbing, or a place"
           aria-label="Search jobs"
-          className="h-[46px] w-full flex-1 rounded-[10px] border-[1.5px] border-[#cfd4db] bg-white px-3.5 text-[15px] placeholder:text-[#9ca3af] focus:border-brand focus:outline-none"
+          className="h-[46px] w-full flex-1 rounded-[10px] border-[1.5px] border-line bg-surface px-3.5 text-[15px] placeholder:text-neutral-400 focus:border-brand focus:outline-none"
         />
         <button
           type="button"
           disabled={locating}
           onClick={() => void findMe()}
-          className="flex h-12 shrink-0 items-center justify-center gap-1.5 rounded-2xl border-[1.5px] border-line bg-white px-4 text-[15px] font-semibold shadow-sm transition hover:border-neutral-300 hover:bg-neutral-50 disabled:opacity-50"
+          className="flex h-12 shrink-0 items-center justify-center gap-1.5 rounded-2xl border-[1.5px] border-line bg-surface px-4 text-[15px] font-semibold shadow-sm transition hover:border-neutral-300 hover:bg-neutral-50 disabled:opacity-50"
         >
           <Icon name="pin" size={18} />
           {locating ? 'Finding you…' : near ? 'Near you' : 'Near me'}

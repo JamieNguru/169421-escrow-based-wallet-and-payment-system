@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 
 import { BrandMark, BrandName } from '../../components/Brand'
 import Icon from '../../components/Icon'
+import ThemeToggle from '../../components/ThemeToggle'
 import type { IconName } from '../../components/Icon'
 
 const POINTS: Array<{ icon: IconName; title: string; text: string }> = [
@@ -51,7 +52,8 @@ export default function AuthLayout({ title, sub, width = 'max-w-[460px]', childr
         <div className="relative text-sm text-white/60">Escrow-based wallet for East Africa</div>
       </aside>
 
-      <main className="flex flex-1 items-center justify-center p-5 sm:p-8">
+      <main className="relative flex flex-1 items-center justify-center p-5 sm:p-8">
+        <ThemeToggle className="absolute right-5 top-5" />
         <div className={`flex w-full ${width} animate-rise flex-col gap-5`}>
           <div className="flex items-center gap-3 lg:hidden">
             <BrandMark size={40} />
@@ -61,7 +63,7 @@ export default function AuthLayout({ title, sub, width = 'max-w-[460px]', childr
             <h1 className="m-0 text-3xl font-extrabold tracking-tight">{title}</h1>
             <div className="mt-1.5 text-[15px] text-neutral-600">{sub}</div>
           </div>
-          <div className="flex flex-col gap-5 rounded-3xl border border-line/70 bg-white p-6 shadow-card sm:p-8">{children}</div>
+          <div className="flex flex-col gap-5 rounded-3xl border border-line/70 bg-surface p-6 shadow-card sm:p-8">{children}</div>
         </div>
       </main>
     </div>

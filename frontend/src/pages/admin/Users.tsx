@@ -54,7 +54,7 @@ export default function Users() {
         onChange={(e) => setQuery(e.target.value)}
         placeholder="Search by name, email or phone"
         aria-label="Search users"
-        className="h-12 w-full rounded-2xl border-[1.5px] border-line bg-white px-4 text-[15px] shadow-sm transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-brand focus:outline-none focus:ring-4 focus:ring-brand/15"
+        className="h-12 w-full rounded-2xl border-[1.5px] border-line bg-surface px-4 text-[15px] shadow-sm transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-brand focus:outline-none focus:ring-4 focus:ring-brand/15"
       />
       <div className="flex flex-wrap gap-2">
         {FILTERS.map((f) => (

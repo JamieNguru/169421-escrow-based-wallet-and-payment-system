@@ -22,7 +22,7 @@ const TIPS = {
 }
 
 const LEVEL_COLOR: Record<TrustLevel, string> = {
-  High: 'text-brand',
+  High: 'text-brand-ink',
   Medium: 'text-warn',
   Low: 'text-danger',
 }
@@ -53,8 +53,8 @@ export default function Trust() {
                   <span className={LEVEL_COLOR[score.trustLevel]}>{score.trustLevel}</span>
                 </Money>
                 <div className="mb-1.5 mt-2.5 flex gap-1.5">
-                  <div className="h-2.5 flex-1 rounded-full bg-[#f3b0b0]" />
-                  <div className="h-2.5 flex-1 rounded-full bg-[#f5c98a]" />
+                  <div className="h-2.5 flex-1 rounded-full bg-danger/40" />
+                  <div className="h-2.5 flex-1 rounded-full bg-warn/40" />
                   <div className="h-2.5 flex-1 rounded-full bg-brand" />
                 </div>
                 <div className="flex justify-between text-sm text-neutral-600">
@@ -70,7 +70,7 @@ export default function Trust() {
                 <Label>How to keep it high</Label>
                 {TIPS[role].map((tip) => (
                   <div key={tip} className="mt-3 flex items-start gap-2.5 text-[15px]">
-                    <span className="text-brand">
+                    <span className="text-brand-ink">
                       <Icon name="check" />
                     </span>
                     {tip}

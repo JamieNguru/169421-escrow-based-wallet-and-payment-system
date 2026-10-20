@@ -84,7 +84,7 @@ export default function AdminOverview() {
                   ))
                 )}
                 <div className="flex-1" />
-                <Small className="mt-2">Scores from the trust model. <Link to="/admin/users" className="font-bold text-brand">See all users</Link></Small>
+                <Small className="mt-2">Scores from the trust model. <Link to="/admin/users" className="font-bold text-brand-ink">See all users</Link></Small>
               </Card>
             </div>
           </>

@@ -68,7 +68,7 @@ export default function WorkerDashboard() {
                       {busy ? 'Saving…' : 'I have finished'}
                     </Button>
                   ) : (
-                    <Small className="mt-4 font-bold text-brand-dark">Waiting for the client to check your work</Small>
+                    <Small className="mt-4 font-bold text-brand-ink">Waiting for the client to check your work</Small>
                   )}
                 </>
               )
@@ -85,7 +85,7 @@ export default function WorkerDashboard() {
           <div className="mt-3">{trust.data ? <TrustBadge level={trust.data.trustLevel} /> : <Small>…</Small>}</div>
           <Small className="mt-2.5">Finish jobs on time and avoid disputes to keep it high.</Small>
           <div className="flex-1" />
-          <Link to="/worker/trust" className="mt-3 inline-flex items-center gap-1.5 text-sm font-bold text-brand hover:underline">
+          <Link to="/worker/trust" className="mt-3 inline-flex items-center gap-1.5 text-sm font-bold text-brand-ink hover:underline">
             See why <Icon name="arrow" size={16} />
           </Link>
         </Card>

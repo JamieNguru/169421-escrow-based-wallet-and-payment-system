@@ -41,7 +41,7 @@ export default function Login() {
       </form>
       <div className="text-center text-sm text-neutral-600">
         New here?{' '}
-        <Link to="/register" className="font-bold text-brand">
+        <Link to="/register" className="font-bold text-brand-ink">
           Create an account
         </Link>
       </div>

@@ -12,7 +12,7 @@ export function Card({ children, className, interactive }: { children: ReactNode
   return (
     <div
       className={cx(
-        'flex flex-col rounded-3xl border border-line/70 bg-white p-5 shadow-card',
+        'flex flex-col rounded-3xl border border-line/70 bg-surface p-5 shadow-card',
         interactive && 'transition duration-200 hover:-translate-y-0.5 hover:shadow-lift',
         className,
       )}
@@ -27,7 +27,7 @@ export function HeroCard({ children, className }: { children: ReactNode; classNa
   return (
     <div
       className={cx(
-        'relative flex flex-col overflow-hidden rounded-3xl border border-[#cfe9d8] bg-gradient-to-br from-brand-tint via-white to-white p-6 shadow-card',
+        'relative flex flex-col overflow-hidden rounded-3xl border border-brand/25 bg-gradient-to-br from-brand-tint via-surface to-surface p-6 shadow-card',
         className,
       )}
     >
@@ -71,7 +71,7 @@ export const SectionTitle = ({ children }: { children: ReactNode }) => (
 // A round icon badge used on cards and empty states.
 export function IconBubble({ name, tone = 'green' }: { name: IconName; tone?: 'green' | 'amber' | 'red' | 'grey' }) {
   const tones = {
-    green: 'bg-brand-tint text-brand',
+    green: 'bg-brand-tint text-brand-ink',
     amber: 'bg-warn-tint text-warn',
     red: 'bg-danger-tint text-danger',
     grey: 'bg-neutral-100 text-neutral-500',
@@ -87,9 +87,9 @@ type Tone = 'primary' | 'outline' | 'dark' | 'danger'
 const TONES: Record<Tone, string> = {
   primary:
     'border-transparent bg-gradient-to-b from-[#1a9248] to-brand text-white shadow-button hover:from-brand hover:to-brand-dark hover:-translate-y-px',
-  outline: 'border-line bg-white text-ink shadow-sm hover:border-neutral-300 hover:bg-neutral-50',
-  dark: 'border-transparent bg-ink text-white shadow-md hover:bg-neutral-800 hover:-translate-y-px',
-  danger: 'border-[#f3b0b0] bg-white text-danger hover:bg-danger-tint',
+  outline: 'border-line bg-surface text-ink shadow-sm hover:border-neutral-300 hover:bg-neutral-50',
+  dark: 'border-transparent bg-contrast text-on-contrast shadow-md hover:opacity-90 hover:-translate-y-px',
+  danger: 'border-danger/30 bg-surface text-danger hover:bg-danger-tint',
 }
 
 interface ButtonStyle {
@@ -136,7 +136,7 @@ export function LinkButton({ tone, small, icon, className, children, ...rest }: 
 
 type ChipTone = 'green' | 'solid' | 'amber' | 'red' | 'grey'
 const CHIP: Record<ChipTone, string> = {
-  green: 'border-transparent bg-brand-tint text-brand-dark',
+  green: 'border-transparent bg-brand-tint text-brand-ink',
   solid: 'border-transparent bg-brand text-white shadow-sm',
   amber: 'border-transparent bg-warn-tint text-warn',
   red: 'border-transparent bg-danger-tint text-danger',
@@ -173,7 +173,7 @@ export const TrustBadge = ({ level }: { level: TrustLevel | string }) => (
 )
 
 const fieldBox =
-  'w-full rounded-2xl border-[1.5px] border-line bg-white px-4 text-[15px] text-ink shadow-sm transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-brand focus:outline-none focus:ring-4 focus:ring-brand/15 disabled:bg-neutral-50 disabled:text-neutral-500'
+  'w-full rounded-2xl border-[1.5px] border-line bg-surface px-4 text-[15px] text-ink shadow-sm transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-brand focus:outline-none focus:ring-4 focus:ring-brand/15 disabled:bg-neutral-50 disabled:text-neutral-500'
 
 export function Field({ label, hint, ...rest }: { label: string; hint?: ReactNode } & InputHTMLAttributes<HTMLInputElement>) {
   return (
@@ -209,16 +209,16 @@ export function Select({ label, hint, children, ...rest }: { label: string; hint
 
 type BannerTone = 'green' | 'amber' | 'red'
 const BANNER: Record<BannerTone, string> = {
-  green: 'border-[#cfe9d8] bg-brand-tint/70 text-brand-dark',
-  amber: 'border-[#f6d9ae] bg-warn-tint text-warn',
-  red: 'border-[#f6c4c4] bg-danger-tint text-danger',
+  green: 'border-brand/25 bg-brand-tint/70 text-brand-ink',
+  amber: 'border-warn/30 bg-warn-tint text-warn',
+  red: 'border-danger/30 bg-danger-tint text-danger',
 }
 
 export function Banner({ tone = 'green', icon, title, children }: { tone?: BannerTone; icon?: IconName; title?: string; children?: ReactNode }) {
   return (
     <div className={cx('flex items-center gap-3.5 rounded-2xl border px-4 py-3.5', BANNER[tone])}>
       {icon && (
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/70">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-surface/70">
           <Icon name={icon} size={20} />
         </span>
       )}
@@ -231,7 +231,7 @@ export function Banner({ tone = 'green', icon, title, children }: { tone?: Banne
 }
 
 export const ErrorNote = ({ message }: { message: string }) => (
-  <div role="alert" className="flex items-start gap-2.5 rounded-2xl border border-[#f6c4c4] bg-danger-tint px-4 py-3 text-sm text-danger">
+  <div role="alert" className="flex items-start gap-2.5 rounded-2xl border border-danger/30 bg-danger-tint px-4 py-3 text-sm text-danger">
     <Icon name="alert" size={18} />
     <span>{message}</span>
   </div>
@@ -250,7 +250,7 @@ export const Loading = () => (
 )
 
 export const Empty = ({ children, icon = 'check' }: { children: ReactNode; icon?: IconName }) => (
-  <div className="flex flex-col items-center gap-3 rounded-3xl border-[1.5px] border-dashed border-neutral-300 bg-white/60 px-6 py-10 text-center text-sm text-muted">
+  <div className="flex flex-col items-center gap-3 rounded-3xl border-[1.5px] border-dashed border-neutral-300 bg-surface/60 px-6 py-10 text-center text-sm text-muted">
     <IconBubble name={icon} tone="grey" />
     <div className="max-w-xs leading-relaxed">{children}</div>
   </div>
@@ -271,7 +271,7 @@ export function Async<T>({
 
 export function Table({ headers, children }: { headers: string[]; children: ReactNode }) {
   return (
-    <div className="overflow-x-auto rounded-3xl border border-line/70 bg-white px-3 py-2 shadow-card">
+    <div className="overflow-x-auto rounded-3xl border border-line/70 bg-surface px-3 py-2 shadow-card">
       <table className="w-full border-collapse text-[14.5px]">
         <thead>
           <tr>

@@ -23,7 +23,7 @@ function Steps({ done }: { done: number }) {
       <div className="absolute left-[12%] right-[12%] top-[15px] h-0.5 bg-brand" />
       {STEPS.map((label, i) => (
         <div key={label} className="z-[1] flex flex-1 flex-col items-center gap-1.5">
-          <div className={`flex h-[30px] w-[30px] items-center justify-center rounded-full border-2 border-brand text-white ${i < done ? 'bg-brand' : 'bg-white'}`}>
+          <div className={`flex h-[30px] w-[30px] items-center justify-center rounded-full border-2 border-brand text-white ${i < done ? 'bg-brand' : 'bg-surface'}`}>
             {i < done && <Icon name="check" size={18} />}
           </div>
           <div className={`text-center text-[13px] ${i < done ? 'font-bold' : 'text-neutral-400'}`}>{label}</div>

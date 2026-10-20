@@ -55,7 +55,7 @@ export default function Register() {
                 onClick={() => setRole(r.role)}
                 aria-pressed={on}
                 className={`flex flex-1 items-center justify-between rounded-2xl p-4 text-left transition ${
-                  on ? 'border-[1.5px] border-brand bg-brand-tint shadow-card ring-4 ring-brand/10' : 'border-[1.5px] border-line bg-white hover:border-neutral-300'
+                  on ? 'border-[1.5px] border-brand bg-brand-tint shadow-card ring-4 ring-brand/10' : 'border-[1.5px] border-line bg-surface hover:border-neutral-300'
                 }`}
               >
                 <div>
@@ -63,7 +63,7 @@ export default function Register() {
                   <div className="text-sm text-neutral-600">{r.sub}</div>
                 </div>
                 {on && (
-                  <span className="text-brand">
+                  <span className="text-brand-ink">
                     <Icon name="check" />
                   </span>
                 )}
@@ -86,7 +86,7 @@ export default function Register() {
       </form>
       <div className="text-center text-sm text-neutral-600">
         Already have an account?{' '}
-        <Link to="/login" className="font-bold text-brand">
+        <Link to="/login" className="font-bold text-brand-ink">
           Log in
         </Link>
       </div>

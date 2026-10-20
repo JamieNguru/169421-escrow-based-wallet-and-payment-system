@@ -64,7 +64,7 @@ export default function JobTile({ job }: { job: Job }) {
       <Small className="mt-1 line-clamp-2">{job.description}</Small>
       <Small className="mt-2.5">Posted {formatDate(job.createdAt)}</Small>
       {count > 0 && (
-        <button type="button" onClick={() => void togglePhotos()} disabled={loadingPhotos} className="mt-2 self-start text-sm font-bold text-brand disabled:opacity-50">
+        <button type="button" onClick={() => void togglePhotos()} disabled={loadingPhotos} className="mt-2 self-start text-sm font-bold text-brand-ink disabled:opacity-50">
           {loadingPhotos ? 'Loading photos…' : photos ? 'Hide photos' : `View ${count} ${count === 1 ? 'photo' : 'photos'}`}
         </button>
       )}
@@ -72,7 +72,7 @@ export default function JobTile({ job }: { job: Job }) {
       <div className="flex-1" />
       {error && <div className="mt-2"><ErrorNote message={error} /></div>}
       {applied ? (
-        <Button small icon="check" disabled className="mt-3.5 border-[#b7dfc4] bg-brand-tint text-brand-dark">Applied</Button>
+        <Button small icon="check" disabled className="mt-3.5 border-brand/30 bg-brand-tint text-brand-ink">Applied</Button>
       ) : (
         <Button small tone="primary" className="mt-3.5" disabled={busy} onClick={() => void apply()}>
           {busy ? 'Applying…' : 'Apply'}

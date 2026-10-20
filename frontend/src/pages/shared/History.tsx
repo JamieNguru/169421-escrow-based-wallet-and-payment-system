@@ -83,7 +83,7 @@ export default function History() {
               <tr key={t.id}>
                 <Td>{formatDate(t.createdAt)}</Td>
                 <Td>{WHAT[t.type] ?? t.type}</Td>
-                <Td className={isIn ? 'font-bold text-brand' : 'font-bold'}>
+                <Td className={isIn ? 'font-bold text-brand-ink' : 'font-bold'}>
                   {isIn ? '+ ' : '− '}
                   {formatMoney(t.amount, t.currency)}
                 </Td>

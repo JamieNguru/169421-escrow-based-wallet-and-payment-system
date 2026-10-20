@@ -76,7 +76,7 @@ export default function ClientDashboard() {
             {(w) => (
               <>
                 <Money size="text-5xl">{formatMoney(w.balance, w.currency)}</Money>
-                <div className="mt-3 inline-flex items-center gap-2 self-start rounded-full bg-white/80 px-3.5 py-1.5 text-sm font-semibold text-brand-dark ring-1 ring-[#cfe9d8]">
+                <div className="mt-3 inline-flex items-center gap-2 self-start rounded-full bg-surface/80 px-3.5 py-1.5 text-sm font-semibold text-brand-ink ring-1 ring-brand/25">
                   <span className="h-2 w-2 rounded-full bg-brand" />
                   {formatMoney(w.escrowBalance, w.currency)} held safely for your jobs
                 </div>

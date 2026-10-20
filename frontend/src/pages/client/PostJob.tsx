@@ -70,7 +70,7 @@ export default function PostJob() {
           <div>
             <Field label="Location" value={place} onChange={(e) => setPlace(e.target.value)} maxLength={120} placeholder="Kilimani, Nairobi" />
             <div className="mt-2 flex flex-wrap items-center gap-3 text-[13px] text-muted">
-              <button type="button" disabled={locating} onClick={() => void useMyLocation()} className="font-bold text-brand disabled:opacity-50">
+              <button type="button" disabled={locating} onClick={() => void useMyLocation()} className="font-bold text-brand-ink disabled:opacity-50">
                 {locating ? 'Finding you…' : coords ? 'Update my position' : 'Use my current position'}
               </button>
               {coords ? (
@@ -103,7 +103,7 @@ export default function PostJob() {
           <Label>How payment works</Label>
           {STEPS.map((step, i) => (
             <div key={step} className="mt-3.5 flex items-center gap-3">
-              <div className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full bg-brand-tint font-bold text-brand-dark">
+              <div className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full bg-brand-tint font-bold text-brand-ink">
                 {i + 1}
               </div>
               <div className="text-[15px]">{step}</div>

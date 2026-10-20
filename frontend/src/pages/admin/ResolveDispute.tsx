@@ -100,7 +100,7 @@ export default function ResolveDispute() {
                             role="radio"
                             aria-checked={on}
                             onClick={() => setDecision(o.id)}
-                            className={`flex items-center gap-2.5 rounded-2xl px-4 py-3.5 text-left text-[15px] font-medium transition ${on ? 'border-[1.5px] border-brand bg-brand-tint ring-4 ring-brand/10' : 'border-[1.5px] border-line bg-white hover:border-neutral-300'}`}
+                            className={`flex items-center gap-2.5 rounded-2xl px-4 py-3.5 text-left text-[15px] font-medium transition ${on ? 'border-[1.5px] border-brand bg-brand-tint ring-4 ring-brand/10' : 'border-[1.5px] border-line bg-surface hover:border-neutral-300'}`}
                           >
                             <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-brand">
                               {on && <span className="h-2.5 w-2.5 rounded-full bg-brand" />}
