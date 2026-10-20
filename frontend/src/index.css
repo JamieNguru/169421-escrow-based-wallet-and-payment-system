@@ -1,0 +1,24 @@
+@import "tailwindcss";
+
+/* Palette taken from the wireframes (diagrams/wireframes/src/wf.css). */
+@theme {
+  --color-brand: #15803d;
+  --color-brand-dark: #166534;
+  --color-brand-tint: #e8f5ec;
+  --color-ink: #111827;
+  --color-muted: #6b7280;
+  --color-line: #e5e7eb;
+  --color-canvas: #f6f7f9;
+  --color-danger: #dc2626;
+  --color-danger-tint: #fdecec;
+  --color-warn: #b45309;
+  --color-warn-tint: #fef3e2;
+  --font-sans: Arial, Helvetica, sans-serif;
+}
+
+body {
+  margin: 0;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}

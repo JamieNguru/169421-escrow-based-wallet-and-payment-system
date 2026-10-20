@@ -1,0 +1,69 @@
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import type { ReactNode } from 'react'
+
+import { authApi } from '../api/api'
+import { setToken, setUnauthorizedHandler } from '../api/http'
+import type { Role, User } from '../api/types'
+
+const STORAGE_KEY = 'escrow.session'
+
+interface Session {
+  token: string
+  user: User
+}
+
+interface AuthValue {
+  user: User | null
+  login: (email: string, password: string) => Promise<User>
+  logout: () => void
+}
+
+const AuthContext = createContext<AuthValue | null>(null)
+
+function readSession(): Session | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    return raw ? (JSON.parse(raw) as Session) : null
+  } catch {
+    return null
+  }
+}
+
+// The initial read also hands the token to the HTTP layer before any page loads.
+const initial = readSession()
+if (initial) setToken(initial.token)
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [session, setSession] = useState<Session | null>(initial)
+
+  const logout = useCallback(() => {
+    setToken(null)
+    localStorage.removeItem(STORAGE_KEY)
+    setSession(null)
+  }, [])
+
+  const login = useCallback(async (email: string, password: string) => {
+    const next = await authApi.login(email, password)
+    setToken(next.token)
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+    setSession(next)
+    return next.user
+  }, [])
+
+  useEffect(() => {
+    setUnauthorizedHandler(logout)
+    return () => setUnauthorizedHandler(null)
+  }, [logout])
+
+  const value = useMemo(() => ({ user: session?.user ?? null, login, logout }), [session, login, logout])
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function useAuth(): AuthValue {
+  const value = useContext(AuthContext)
+  if (!value) throw new Error('useAuth must be used inside AuthProvider')
+  return value
+}
+
+export const homePathFor = (role: Role) => `/${role}`

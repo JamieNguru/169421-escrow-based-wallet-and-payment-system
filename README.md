@@ -15,7 +15,7 @@ Digital labour platforms in East Africa rely on informal mobile-money transfers 
 
 - **Backend**: Node.js + Express, Firebase Firestore
 - **Trust-scoring microservice**: Python, scikit-learn Random Forest (separate worker and client models), Flask, see [`trust-scoring-ml/`](trust-scoring-ml/)
-- **Frontend**: built from wireframes kept outside this repository
+- **Frontend**: React + TypeScript + Vite single-page app built from the wireframes (which are kept outside this repository), see [`frontend/`](frontend/)
 - **Diagrams**: UML use case, class, and ER diagrams are kept outside this repository
 
 ## Modules
