@@ -27,3 +27,26 @@ export const withdrawSchema = z.object({
 });
 
 export type WithdrawInput = z.infer<typeof withdrawSchema>;
+
+const wholeKes = z
+  .number({ error: "amount must be a number" })
+  .int("amount must be a whole number of KES")
+  .positive("amount must be greater than 0")
+  .max(250_000, "amount must be at most 250,000 (the M-Pesa limit)");
+
+export const topUpSchema = z.object({
+  amount: wholeKes,
+  phone: z
+    .string()
+    .trim()
+    .refine((value) => normalizePhone(value) !== null, "phone must be a valid Kenyan mobile number")
+    .optional(),
+});
+
+export type TopUpInput = z.infer<typeof topUpSchema>;
+
+export const simulateSchema = z.object({
+  outcome: z.enum(["success", "failure"], { error: "outcome must be success or failure" }),
+});
+
+export type SimulateOutcome = z.infer<typeof simulateSchema>["outcome"];

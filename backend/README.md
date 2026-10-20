@@ -284,7 +284,7 @@ Query parameters (all optional):
 | `cursor` | The `nextCursor` from the previous page |
 | `userId` | Admin only: whose history to return |
 
-Returns `200` with `{ "transactions": [{ id, jobId, type, amount, currency, fromUserId, toUserId, createdAt }], "nextCursor": "<ISO date-time>" | null }`. `type` is `escrow_fund`, `escrow_release` or `escrow_refund`. `nextCursor` is `null` on the last page.
+Returns `200` with `{ "transactions": [{ id, jobId, type, amount, currency, fromUserId, toUserId, createdAt }], "nextCursor": "<ISO date-time>" | null }`. `type` is `wallet_topup`, `escrow_fund`, `escrow_release` or `escrow_refund`. `nextCursor` is `null` on the last page.
 
 | Status | Cause |
 |---|---|
@@ -314,26 +314,46 @@ Returns `200` with `{ "conversion": { from, to, amount, rate, converted, rateUpd
 | `401` | Missing or invalid token |
 | `503` | The rate provider is unreachable and no cached rates exist |
 
-## Initiate STK Push
+## Pay with M-Pesa (STK Push)
 
-`POST /api/payments/stk-push` (client only) starts an M-Pesa Daraja STK Push so the client can pay for a job's escrow from their phone. It prompts the phone and stores a `payments/{CheckoutRequestID}` doc with status `pending`. It does not touch the wallet, escrow or ledger; settling the payment from the Daraja callback is a separate step. Configure the `DARAJA_*` variables in `.env` (see `.env.example`). `DARAJA_CALLBACK_URL` must be a public HTTPS URL, so use a tunnel such as ngrok locally.
+A client pays with an M-Pesa STK Push prompt on their phone, either for a job or to top up the wallet. Every payment is in whole KES. Configure the `DARAJA_*` variables in `.env` (see `.env.example`).
 
-Request body (`phone` is optional and falls back to the phone saved at registration):
+1. **Start it:** `POST /api/payments/stk-push` (pay for a job) or `POST /api/payments/top-up` (add to the wallet). Both prompt the phone and store a `payments/{CheckoutRequestID}` doc with status `pending`. Nothing else changes yet.
+2. **Settle it:** when the customer answers, Daraja calls `POST /api/payments/stk/callback/:secret`. A successful payment credits the client's wallet; a job payment is then moved straight into that job's escrow, exactly as `POST /api/escrow/fund` does (the escrow is `in_escrow`, with `topup-{id}` and `fund-{jobId}` ledger entries). A cancelled or failed payment is marked `failed` with Daraja's reason and moves no money.
+3. **Watch it:** the app polls `GET /api/payments/:checkoutRequestId` until the status leaves `pending`.
+
+Settlement runs in one transaction and is safe to repeat: only a `pending` payment is settled, so a repeated callback changes nothing. The money is kept in the wallet instead of the escrow when the job isn't the client's, has a different worker, or is already funded. A success for a different amount than was requested is not trusted: it credits nothing and the payment is marked `failed`, which shows on the admin payments list.
+
+**Callback URL.** Daraja doesn't sign callbacks, so the secret is part of the path and a wrong one looks like a missing route (`404`). Set `DARAJA_STK_CALLBACK_SECRET` to a long random string, and `DARAJA_CALLBACK_URL` to `https://<public host>/api/payments/stk/callback/<that secret>`. Daraja can only reach a public HTTPS address, so locally use a tunnel such as ngrok.
+
+**Test mode.** With `DARAJA_SIMULATE=true` (ignored when `NODE_ENV=production`) no request goes to Daraja and no Daraja settings are needed. The payment is stored with `simulated: true` and an id starting `sim-`, and `POST /api/payments/:checkoutRequestId/simulate` with `{ "outcome": "success" | "failure" }` settles it the way a callback would. That endpoint is a `404` outside test mode and a `409` for a real payment.
+
+### Start a job payment
+
+`POST /api/payments/stk-push` (client only):
 
 ```json
 { "jobId": "job1", "workerId": "worker1", "amount": 500, "phone": "0708374149" }
 ```
 
-`amount` must be a whole number of KES. Returns `202` with `{ "payment": { checkoutRequestId, merchantRequestId, jobId, clientId, workerId, amount, currency, phone, status, createdAt }, "message": "<Daraja customer message>" }`.
+`phone` is optional and falls back to the phone saved at registration. `amount` must be a whole number of KES. Returns `202` with `{ "payment": { checkoutRequestId, merchantRequestId, kind: "escrow", jobId, workerId, clientId, amount, currency, phone, status, createdAt }, "message": "<Daraja customer message>", "simulated": false }`.
+
+### Top up the wallet
+
+`POST /api/payments/top-up` (client only): `{ "amount": 1000, "phone": "0708374149" }`. `amount` is a whole number of KES from 1 to 250,000; `phone` is optional. Returns `202` in the same shape, with `kind: "top_up"`.
+
+### Check a payment
+
+`GET /api/payments/:checkoutRequestId` (client only) returns `{ "payment": { ...payment, status: "pending" | "completed" | "failed", receipt, failureReason, settlement, settledAt } }`. `settlement` is `escrow_funded` or `wallet_credited`.
 
 | Status | Cause |
 |---|---|
 | `400` | Missing or invalid `jobId`, `workerId`, `amount` or `phone`, or no phone on file |
 | `401` | Missing or invalid token |
-| `403` | Caller is not a client |
-| `404` | Worker not found |
+| `403` | Caller is not a client, or the payment is someone else's |
+| `404` | Worker or payment not found |
 | `409` | The job's escrow is already funded |
-| `502` / `503` | Daraja rejected the request / could not be reached |
+| `502` / `503` | Daraja rejected the request / could not be reached, or M-Pesa isn't configured on the server (`"M-Pesa is not set up on this server yet"`; the missing setting is in the server log) |
 
 ## Withdraw to M-Pesa (B2C)
 

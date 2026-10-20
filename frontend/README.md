@@ -30,7 +30,7 @@ npm run lint       # oxlint
 | Role | Screens |
 |---|---|
 | Public | Login, Register |
-| Client | Dashboard, Post a Job, Choose a Worker, Pay into escrow (M-Pesa STK push), Release payment, Report a problem, Wallet, History, My Trust |
+| Client | Dashboard, Post a Job, Choose a Worker, Pay into escrow (from the wallet or with an M-Pesa prompt), Release payment, Report a problem, Wallet (with a top-up), History, My Trust |
 | Worker | Dashboard, Find Jobs, Withdraw to M-Pesa, History, My Trust |
 | Admin | Overview, Disputes, Resolve dispute, Users, Payments |
 
@@ -47,3 +47,9 @@ The API doesn't carry some of what the wireframes show, so these are left out ra
 
 - Photos are shrunk in the browser (`src/lib/images.ts`) and sent as data URLs inside the job or dispute document, three at most, because no file storage is configured. Lists carry a photo count; the photos load when a worker taps "View photos" or an admin opens a dispute.
 - "Use my current position" on Post a Job and "Near me" on Find Jobs use the browser's location (the browser asks for permission). Distances are straight-line, not driving distance.
+
+## Paying with M-Pesa
+
+The pay screen offers the wallet when its balance covers the job, and an M-Pesa prompt otherwise (the prompt tops the wallet up and pays in one step). The Wallet page has a "Top up with M-Pesa" card. While a prompt is open the screen polls the payment until it settles (`src/components/MpesaWait.tsx`).
+
+To try it without Daraja, set `DARAJA_SIMULATE=true` in `backend/.env` and restart the backend: no prompt is sent, and the screen shows "Simulate a successful payment" and "Simulate a cancelled payment" buttons instead. See the backend README for the real setup.

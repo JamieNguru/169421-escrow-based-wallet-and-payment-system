@@ -16,6 +16,7 @@ const FILTERS: Array<{ id: Filter; label: string }> = [
 ]
 
 const WHAT: Record<string, string> = {
+  wallet_topup: 'Top-up from M-Pesa',
   escrow_fund: 'Payment held in escrow',
   escrow_release: 'Payment released',
   escrow_refund: 'Payment refunded',
@@ -24,6 +25,7 @@ const WHAT: Record<string, string> = {
 }
 
 const STATUS: Record<string, { label: string; tone: 'green' | 'amber' | 'red' | 'grey' }> = {
+  wallet_topup: { label: 'Added', tone: 'green' },
   escrow_fund: { label: 'Held', tone: 'amber' },
   escrow_release: { label: 'Released', tone: 'green' },
   escrow_refund: { label: 'Refunded', tone: 'red' },

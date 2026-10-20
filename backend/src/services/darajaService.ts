@@ -3,6 +3,7 @@ import { HttpError } from "../errors";
 
 const REQUEST_TIMEOUT_MS = 10000;
 const UNAVAILABLE = "M-Pesa unavailable";
+const NOT_CONFIGURED = "M-Pesa is not set up on this server yet";
 
 let cachedToken: { value: string; expiresAt: number } | null = null;
 
@@ -47,7 +48,13 @@ async function getAccessToken(): Promise<string> {
 // the prompt was sent; the outcome arrives later on the callback URL.
 export async function initiateStkPush(input: StkPushInput): Promise<StkPushResult> {
   // Missing config is a server error, not an upstream outage, so it is read outside the try.
-  const config = getDarajaConfig();
+  let config: ReturnType<typeof getDarajaConfig>;
+  try {
+    config = getDarajaConfig();
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : err);
+    throw new HttpError(503, NOT_CONFIGURED);
+  }
 
   let body: Record<string, unknown>;
   try {

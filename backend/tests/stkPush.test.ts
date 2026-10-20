@@ -226,11 +226,17 @@ describe("POST /api/payments/stk-push", () => {
     expect(store.has("payments/ws_CO_1")).toBe(false);
   });
 
-  test("500 with a masked message when Daraja is not configured", async () => {
+  test("503 with a plain message when Daraja is not configured", async () => {
     delete process.env.DARAJA_PASSKEY;
+    const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+
     const res = await initiate();
 
-    expect(res.status).toBe(500);
-    expect(res.body).toEqual({ error: "Internal server error" });
+    expect(res.status).toBe(503);
+    expect(res.body).toEqual({ error: "M-Pesa is not set up on this server yet" });
+    // The setting's name goes to the server log, not to the client.
+    expect(errorSpy.mock.calls.flat().join(" ")).toContain("DARAJA_PASSKEY");
+    expect(JSON.stringify(res.body)).not.toContain("DARAJA_");
+    errorSpy.mockRestore();
   });
 });

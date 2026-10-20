@@ -73,6 +73,8 @@ export const escrowApi = {
   get: (jobId: string) => get<{ escrow: Escrow }>(`/api/escrow/${jobId}`).then((r) => r.escrow),
   complete: (jobId: string) => post(`/api/escrow/${jobId}/complete`),
   confirm: (jobId: string) => post(`/api/escrow/${jobId}/confirm`),
+  // Pay a job's escrow from the wallet balance.
+  fund: (input: { jobId: string; workerId: string; amount: number }) => post('/api/escrow/fund', input),
   refundRequest: (jobId: string, reason: string) =>
     post(`/api/escrow/${jobId}/refund-request`, { reason }),
   dispute: (jobId: string, reason: string, photos?: string[]) =>
@@ -85,7 +87,17 @@ export const escrowApi = {
 
 export const paymentsApi = {
   stkPush: (input: { jobId: string; workerId: string; amount: number; phone?: string }) =>
-    post<{ payment: Payment; message: string }>('/api/payments/stk-push', input),
+    post<{ payment: Payment; message: string; simulated: boolean }>('/api/payments/stk-push', input),
+  // Add money to the wallet with an M-Pesa prompt, with no job involved.
+  topUp: (input: { amount: number; phone?: string }) =>
+    post<{ payment: Payment; message: string; simulated: boolean }>('/api/payments/top-up', input),
+  get: (checkoutRequestId: string) =>
+    get<{ payment: Payment }>(`/api/payments/${checkoutRequestId}`).then((r) => r.payment),
+  // Server test mode only: settle one of your test payments.
+  simulate: (checkoutRequestId: string, outcome: 'success' | 'failure') =>
+    post<{ payment: Payment }>(`/api/payments/${checkoutRequestId}/simulate`, { outcome }).then(
+      (r) => r.payment,
+    ),
   withdraw: (amount: number) =>
     post<{ withdrawal: Withdrawal }>('/api/payments/withdraw', { amount }).then(
       (r) => r.withdrawal,
