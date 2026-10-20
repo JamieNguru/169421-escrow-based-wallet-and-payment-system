@@ -1,6 +1,7 @@
 export type Role = 'client' | 'worker' | 'admin'
 export type Currency = 'KES' | 'UGX' | 'TZS' | 'USD'
-export type TrustLevel = 'High' | 'Medium' | 'Low'
+// 'New' means too little history to score yet.
+export type TrustLevel = 'High' | 'Medium' | 'Low' | 'New'
 
 export interface User {
   id: string
@@ -109,6 +110,9 @@ export interface TrustScore {
   role: 'client' | 'worker'
   trustLevel: TrustLevel
   probabilities: Record<string, number>
+  // Only for 'New': jobs settled so far and how many more are needed.
+  finishedJobs?: number
+  jobsNeeded?: number
 }
 
 export interface Payment {

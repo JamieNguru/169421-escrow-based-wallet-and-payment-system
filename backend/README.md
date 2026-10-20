@@ -46,12 +46,29 @@ router.get("/disputes", authenticate, requireRole("worker", "admin"), handler);
 
 ## Trust score
 
-The backend calls the Flask trust-scoring service (`trust-scoring-ml/`) at `ML_SERVICE_URL` (default `http://127.0.0.1:5000`) and returns `{ userId, role, trustLevel, probabilities }`.
+The backend calls the Flask trust-scoring service (`trust-scoring-ml/`) at `ML_SERVICE_URL` (default `http://127.0.0.1:5000`) and returns `{ userId, role, trustLevel, probabilities }` (`trustLevel` is `High`, `Medium`, `Low` or `New`).
 
 - `GET /api/trust-score/me`: a client or worker's own score.
 - `GET /api/trust-score/:userId?role=client|worker`: any client or worker's score, admin only.
 
-Features come from the optional `trustStats` object on the user's document, with placeholder defaults for anything missing, until job and escrow history can be computed. A missing user returns `404`; if the service is down, times out (5s) or errors, the response is `503`.
+**Where the model's inputs come from.** They are worked out from what the user has actually done (`src/services/trustScoreService.ts`):
+
+| Role | Input | How it is computed |
+|---|---|---|
+| Worker | `job_completion_rate` | Settled jobs paid out (`completed` or `split`) over all settled jobs (those plus `refunded`) |
+| Worker | `dispute_rate` | Disputes on the worker's jobs over their funded jobs |
+| Worker | `response_time_hours` | Average time from funding to the worker marking the work done |
+| Client | `payment_completion_rate` | Same paid-out over settled share, for the client's jobs |
+| Client | `refund_rate` | Refund requests plus disputes the client raised, over their funded jobs |
+| Client | `escrow_release_time_hours` | Average time from the work being marked done to the client releasing |
+
+An input that can't be worked out yet (for example, no job has been submitted) falls back to a neutral value near the middle of the training data.
+
+**New users are not scored.** Until a user has `MIN_FINISHED_JOBS` (3) settled jobs, the response is `{ userId, role, trustLevel: "New", probabilities: {}, finishedJobs, jobsNeeded }` and the model is not called. The models were trained on users with hundreds of transactions, so a brand-new account's empty history looked like a bad one and was always scored Low. `New` users are counted under `New` in the admin overview and are never in its low-trust list.
+
+A `trustStats` object on a user's document still overrides the computed inputs (and skips the 3-job rule), so demo accounts can be given any history.
+
+A missing user returns `404`; if the service is down, times out (5s) or errors, the response is `503`.
 
 ## Escrow state machine
 

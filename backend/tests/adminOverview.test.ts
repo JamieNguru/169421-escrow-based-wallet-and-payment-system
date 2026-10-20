@@ -88,9 +88,10 @@ describe("GET /api/admin/overview", () => {
   });
 
   test("counts trust levels per role and reports failed scoring as unavailable", async () => {
-    store.set("clients/c1", { name: "Carol" });
-    store.set("clients/c2", { name: "Chege" });
-    store.set("workers/w1", { name: "Wanjiku" });
+    // trustStats stands in for enough history to be scored by the model.
+    store.set("clients/c1", { name: "Carol", trustStats: {} });
+    store.set("clients/c2", { name: "Chege", trustStats: {} });
+    store.set("workers/w1", { name: "Wanjiku", trustStats: {} });
     fetchMock.mockImplementation((_url: string, init: { body: string }) => {
       const { role } = JSON.parse(init.body);
       return role === "worker" ? Promise.reject(new TypeError("fetch failed")) : flask("High");
@@ -132,9 +133,9 @@ describe("GET /api/admin/overview", () => {
   });
 
   test("reports today's payments, failures and active users, and lists low-trust users", async () => {
-    store.set("clients/c1", { name: "Kevin", status: "active" });
-    store.set("clients/c2", { name: "Mary", status: "suspended" });
-    store.set("workers/w1", { name: "James" });
+    store.set("clients/c1", { name: "Kevin", status: "active", trustStats: {} });
+    store.set("clients/c2", { name: "Mary", status: "suspended", trustStats: {} });
+    store.set("workers/w1", { name: "James", trustStats: {} });
     store.set("payments/p1", { status: "failed", createdAt: new Date() });
     store.set("payments/p2", { status: "completed", createdAt: new Date() });
     store.set("payments/p3", { status: "completed", createdAt: new Date("2020-01-01T00:00:00Z") });

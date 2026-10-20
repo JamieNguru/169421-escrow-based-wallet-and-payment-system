@@ -22,6 +22,7 @@ const TIPS = {
 }
 
 const LEVEL_COLOR: Record<TrustLevel, string> = {
+  New: 'text-neutral-600',
   High: 'text-brand-ink',
   Medium: 'text-warn',
   Low: 'text-danger',
@@ -44,7 +45,10 @@ export default function Trust() {
       }
     >
       <Async state={state}>
-        {(score) => (
+        {(score) =>
+          score.trustLevel === 'New' ? (
+            <NewMember finished={score.finishedJobs ?? 0} needed={score.jobsNeeded ?? 0} tips={TIPS[role]} />
+          ) : (
           <>
             <div className="grid gap-5 md:grid-cols-2">
               <Card>
@@ -90,8 +94,54 @@ export default function Trust() {
               ))}
             </div>
           </>
-        )}
+          )
+        }
       </Async>
     </Page>
+  )
+}
+
+// Shown until there are enough settled jobs to judge: progress, not a bad grade.
+function NewMember({ finished, needed, tips }: { finished: number; needed: number; tips: string[] }) {
+  const total = finished + needed
+  const percent = total ? Math.round((finished / total) * 100) : 0
+
+  return (
+    <div className="grid gap-5 md:grid-cols-2">
+      <Card>
+        <Label>Your trust level</Label>
+        <Money>
+          <span className="text-neutral-600">New</span>
+        </Money>
+        <Small>
+          Your trust level appears once {total} of your jobs are finished. Until then you are not marked as low or
+          high, just new.
+        </Small>
+        <div className="mt-4">
+          <div className="mb-1.5 flex justify-between text-sm font-semibold">
+            <span>
+              {finished} of {total} jobs finished
+            </span>
+            <span className="text-muted">
+              {needed} to go
+            </span>
+          </div>
+          <div className="h-2.5 overflow-hidden rounded-full bg-neutral-200">
+            <div className="h-full rounded-full bg-brand transition-all" style={{ width: `${percent}%` }} />
+          </div>
+        </div>
+      </Card>
+      <Card>
+        <Label>How to build it</Label>
+        {tips.map((tip) => (
+          <div key={tip} className="mt-3 flex items-start gap-2.5 text-[15px]">
+            <span className="text-brand-ink">
+              <Icon name="check" />
+            </span>
+            {tip}
+          </div>
+        ))}
+      </Card>
+    </div>
   )
 }

@@ -164,7 +164,7 @@ export function Chip({ tone = 'green', icon, children, onClick }: { tone?: ChipT
   )
 }
 
-const TRUST_TONE: Record<TrustLevel, ChipTone> = { High: 'green', Medium: 'amber', Low: 'red' }
+const TRUST_TONE: Record<TrustLevel, ChipTone> = { High: 'green', Medium: 'amber', Low: 'red', New: 'grey' }
 
 export const TrustBadge = ({ level }: { level: TrustLevel | string }) => (
   <Chip tone={TRUST_TONE[level as TrustLevel] ?? 'grey'} icon="star">

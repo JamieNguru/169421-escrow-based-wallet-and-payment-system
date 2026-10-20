@@ -77,7 +77,8 @@ describe("GET /api/jobs/:jobId/applications", () => {
     store.set("jobs/job1", { clientId: "client1", title: "Job 1", status: "open", createdAt: at(0) });
     store.set("jobs/job2", { clientId: "client1", title: "Job 2", status: "open", createdAt: at(0) });
     for (const id of ["w1", "w2", "w3"]) {
-      store.set(`workers/${id}`, { name: `Worker ${id}`, email: `${id}@example.com`, passwordHash: "secret-hash" });
+      // trustStats stands in for enough history to be scored by the model.
+      store.set(`workers/${id}`, { name: `Worker ${id}`, email: `${id}@example.com`, passwordHash: "secret-hash", trustStats: {} });
     }
     application("job1", "w1", 1, "I can start tomorrow");
     application("job1", "w2", 2);
@@ -184,4 +185,17 @@ describe("GET /api/jobs/:jobId/applications", () => {
     expect(res.body.applications).toHaveLength(3);
     expect(res.body.applications[0].worker).not.toHaveProperty("trustLevel");
   });
+
+  test("shows a worker with no settled jobs as New, without asking the model", async () => {
+    store.set("workers/w1", { name: "Worker w1", email: "w1@example.com" });
+
+    const res = await review();
+
+    expect(res.status).toBe(200);
+    const byWorker = (id: string) => res.body.applications.find((a: any) => a.workerId === id).worker;
+    expect(byWorker("w1").trustLevel).toBe("New");
+    expect(byWorker("w2").trustLevel).toBe("High");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });
+
