@@ -177,6 +177,23 @@ Body: `{ "decision": "release" | "refund", "resolution": "..." }` (`resolution` 
 | `404` | No escrow, dispute or wallet exists for the job |
 | `409` | The escrow is not `disputed` (including already resolved) |
 
+## Manage users (admin)
+
+All three endpoints are admin only. Users are read from the `clients`, `workers` and `admins` collections and never include `passwordHash`. A user with no `status` field counts as `active`.
+
+- `GET /api/admin/users?role=&status=&limit=&startAfter=` lists users from every collection, newest first. `role` is `client`, `worker` or `admin`; `status` is `active` or `suspended`; `limit` is 1-100 (default 25). Returns `200` with `{ "users": [{ id, name, email, phone?, role, status, statusReason?, createdAt }], "nextCursor"? }`. Pass `nextCursor` back as `startAfter` for the next page; it is absent on the last page.
+- `GET /api/admin/users/:role/:id` returns `200` with `{ "user": { ...same fields, wallet?: { id, balance, escrowBalance, currency } } }`. Admins have no wallet.
+- `PATCH /api/admin/users/:role/:id/status` with `{ "status": "active" | "suspended", "reason"?: "..." }` (`reason` is 1-1000 characters) suspends or reactivates a client or worker. It stamps `status`, `statusReason`, `statusUpdatedAt` and `statusUpdatedBy` and returns `200` with `{ "user": { ... } }`. Admin accounts cannot be suspended, which also stops an admin suspending themselves.
+
+A suspended user gets `403` from `POST /api/auth/login`, after the password check. Tokens issued before the suspension stay valid until they expire (`JWT_EXPIRES_IN`, default 1 day).
+
+| Status | Cause |
+|---|---|
+| `400` | Invalid query, `role` or body |
+| `401` | Missing or invalid token |
+| `403` | The caller is not an admin, or the target is an admin account |
+| `404` | No user with that role and id |
+
 ## View transaction history
 
 `GET /api/transactions` returns the caller's ledger entries (`transactions` collection), newest first. An entry is included when the caller is its `fromUserId` or `toUserId`. Any role can call it. An admin can pass `userId` to view another user's history.
