@@ -150,6 +150,20 @@ Body: `{ "reason": "..." }` (1-1000 characters). Returns `201` with `{ "dispute"
 | `404` | No escrow exists for the job |
 | `409` | The escrow is not `in_escrow` or `work_submitted` (including already disputed) |
 
+## Resolve dispute
+
+`POST /api/escrow/:jobId/resolve-dispute` (admin only) settles a disputed escrow. It runs the `resolve_release` or `resolve_refund` transition, moves the money in one transaction, and marks `disputes/{jobId}` as `resolved`. `release` pays the worker, sets the escrow to `completed` and stamps `completedAt`. `refund` returns the money to the client's balance, sets the escrow to `refunded` and stamps `refundedAt`. Each writes one ledger entry (`release-{jobId}` or `refund-{jobId}`). A dispute can only be resolved once.
+
+Body: `{ "decision": "release" | "refund", "resolution": "..." }` (`resolution` is 1-1000 characters). Returns `200` with `{ "dispute": { ...dispute fields, status: "resolved", decision, resolution, resolvedBy, resolvedAt } }`.
+
+| Status | Cause |
+|---|---|
+| `400` | `decision` is not `release` or `refund`, or `resolution` is missing, empty or longer than 1000 characters |
+| `401` | Missing or invalid token |
+| `403` | The caller is not an admin |
+| `404` | No escrow, dispute or wallet exists for the job |
+| `409` | The escrow is not `disputed` (including already resolved) |
+
 ## View transaction history
 
 `GET /api/transactions` returns the caller's ledger entries (`transactions` collection), newest first. An entry is included when the caller is its `fromUserId` or `toUserId`. Any role can call it. An admin can pass `userId` to view another user's history.
@@ -162,7 +176,7 @@ Query parameters (all optional):
 | `cursor` | The `nextCursor` from the previous page |
 | `userId` | Admin only: whose history to return |
 
-Returns `200` with `{ "transactions": [{ id, jobId, type, amount, currency, fromUserId, toUserId, createdAt }], "nextCursor": "<ISO date-time>" | null }`. `type` is `escrow_fund` or `escrow_release`. `nextCursor` is `null` on the last page.
+Returns `200` with `{ "transactions": [{ id, jobId, type, amount, currency, fromUserId, toUserId, createdAt }], "nextCursor": "<ISO date-time>" | null }`. `type` is `escrow_fund`, `escrow_release` or `escrow_refund`. `nextCursor` is `null` on the last page.
 
 | Status | Cause |
 |---|---|
