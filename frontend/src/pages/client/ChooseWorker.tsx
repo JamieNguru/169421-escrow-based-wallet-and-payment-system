@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 
 import { jobsApi } from '../../api/api'
 import { Page } from '../../components/AppShell'
-import { Async, Banner, Button, Card, Empty, ErrorNote, PageHead, Small } from '../../components/ui'
+import { Async, Banner, Button, Card, Empty, ErrorNote, PageHead, Small, TrustBadge } from '../../components/ui'
 import { useAsync } from '../../hooks/useAsync'
 import { formatMoney } from '../../lib/format'
 
@@ -40,8 +40,8 @@ export default function ChooseWorker() {
       }
     >
       <Banner icon="shield">
-        Pick the worker you trust most. Their application message is shown below, and you pay into escrow only
-        after you choose.
+        <b>Trust level</b> is worked out from each worker’s history on the platform. You pay into escrow only after
+        you choose.
       </Banner>
       {error && <ErrorNote message={error} />}
       <Async state={applicants}>
@@ -60,6 +60,8 @@ export default function ChooseWorker() {
                     <Small className="mt-0.5">{a.message || 'No message'}</Small>
                   </div>
                 </div>
+                <div className="flex shrink-0 items-center gap-4">
+                  {a.worker.trustLevel && <TrustBadge level={a.worker.trustLevel} />}
                 <Button
                   small
                   tone={a.status === 'pending' ? 'outline' : 'primary'}
@@ -69,6 +71,7 @@ export default function ChooseWorker() {
                 >
                   {busyId === a.workerId ? 'Choosing…' : a.status === 'selected' ? 'Chosen' : 'Choose'}
                 </Button>
+                </div>
               </Card>
             ))
           )

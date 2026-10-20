@@ -12,7 +12,7 @@ import { formatDateTime, formatMoney } from '../../lib/format'
 const STEPS = ['Paid', 'Held safely', 'Work done', 'Released']
 
 const stepsDone = (escrow: Escrow) => {
-  if (escrow.status === 'completed') return 4
+  if (escrow.status === 'completed' || escrow.status === 'split') return 4
   if (escrow.status === 'work_submitted') return 3
   return 2
 }
@@ -71,7 +71,7 @@ export default function ReleasePayment() {
               <div className="grid gap-4 md:grid-cols-5">
                 <Card className="md:col-span-3">
                   <div>
-                    <Chip icon="lock">{escrow.status === 'completed' ? 'Released' : 'Held safely'}</Chip>
+                    <Chip icon="lock">{escrow.status === 'completed' ? 'Released' : escrow.status === 'split' ? 'Split by admin' : 'Held safely'}</Chip>
                   </div>
                   <Money size="text-[44px]">{formatMoney(escrow.amount, escrow.currency)}</Money>
                   <div className="mt-7">

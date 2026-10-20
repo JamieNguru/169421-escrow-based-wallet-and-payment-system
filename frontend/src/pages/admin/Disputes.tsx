@@ -32,7 +32,7 @@ export default function Disputes() {
                   <Small>“{d.reason}”</Small>
                 </div>
                 <div className="flex shrink-0 items-center gap-2.5">
-                  {d.status === 'open' ? <Chip tone="amber">{ageLabel(d.createdAt)}</Chip> : <Chip tone="grey">{d.decision === 'release' ? 'Paid worker' : 'Refunded client'}</Chip>}
+                  {d.status === 'open' ? <Chip tone="amber">{ageLabel(d.createdAt)}</Chip> : <Chip tone="grey">{d.decision === 'release' ? 'Paid worker' : d.decision === 'split' ? 'Split' : 'Refunded client'}</Chip>}
                   <LinkButton to={`/admin/disputes/${d.jobId}`} small tone={d.status === 'open' ? 'primary' : 'outline'} className="w-[110px]">
                     {d.status === 'open' ? 'Review' : 'View'}
                   </LinkButton>

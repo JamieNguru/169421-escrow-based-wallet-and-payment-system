@@ -14,7 +14,7 @@ interface Session {
 
 interface AuthValue {
   user: User | null
-  login: (email: string, password: string) => Promise<User>
+  login: (identifier: string, password: string) => Promise<User>
   logout: () => void
 }
 
@@ -42,8 +42,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSession(null)
   }, [])
 
-  const login = useCallback(async (email: string, password: string) => {
-    const next = await authApi.login(email, password)
+  const login = useCallback(async (identifier: string, password: string) => {
+    const next = await authApi.login(identifier, password)
     setToken(next.token)
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
     setSession(next)

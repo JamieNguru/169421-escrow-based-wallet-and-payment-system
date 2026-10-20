@@ -8,6 +8,7 @@ import type {
   Currency,
   Escrow,
   Job,
+  JobLocation,
   MyJob,
   Payment,
   PlatformOverview,
@@ -20,8 +21,9 @@ import type {
 } from './types'
 
 export const authApi = {
-  login: (email: string, password: string) =>
-    post<{ token: string; user: User }>('/api/auth/login', { email, password }),
+  // `identifier` is an email or a Kenyan mobile number.
+  login: (identifier: string, password: string) =>
+    post<{ token: string; user: User }>('/api/auth/login', { identifier, password }),
   register: (input: {
     name: string
     email: string
@@ -41,10 +43,22 @@ export const walletApi = {
 
 export const jobsApi = {
   mine: () => get<{ jobs: MyJob[] }>('/api/jobs/mine').then((r) => r.jobs),
-  browse: (cursor?: string) =>
-    get<{ jobs: Job[]; nextCursor: string | null }>('/api/jobs', { cursor }),
-  post: (input: { title: string; description: string; budget: number; currency: Currency }) =>
-    post<{ job: Job }>('/api/jobs', input).then((r) => r.job),
+  browse: (cursor?: string, near?: { lat: number; lng: number }) =>
+    get<{ jobs: Job[]; nextCursor: string | null }>('/api/jobs', {
+      cursor,
+      lat: near?.lat,
+      lng: near?.lng,
+    }),
+  // One job with its photos.
+  get: (jobId: string) => get<{ job: Job }>(`/api/jobs/${jobId}`).then((r) => r.job),
+  post: (input: {
+    title: string
+    description: string
+    budget: number
+    currency: Currency
+    location?: JobLocation
+    photos?: string[]
+  }) => post<{ job: Job }>('/api/jobs', input).then((r) => r.job),
   apply: (jobId: string, message?: string) =>
     post(`/api/jobs/${jobId}/apply`, message ? { message } : {}),
   applications: (jobId: string) =>
@@ -61,9 +75,12 @@ export const escrowApi = {
   confirm: (jobId: string) => post(`/api/escrow/${jobId}/confirm`),
   refundRequest: (jobId: string, reason: string) =>
     post(`/api/escrow/${jobId}/refund-request`, { reason }),
-  dispute: (jobId: string, reason: string) => post(`/api/escrow/${jobId}/dispute`, { reason }),
-  resolveDispute: (jobId: string, decision: 'release' | 'refund', resolution: string) =>
-    post(`/api/escrow/${jobId}/resolve-dispute`, { decision, resolution }),
+  dispute: (jobId: string, reason: string, photos?: string[]) =>
+    post(`/api/escrow/${jobId}/dispute`, { reason, ...(photos?.length ? { photos } : {}) }),
+  resolveDispute: (
+    jobId: string,
+    input: { decision: 'release' | 'refund' | 'split'; resolution: string; clientAmount?: number },
+  ) => post(`/api/escrow/${jobId}/resolve-dispute`, input),
 }
 
 export const paymentsApi = {
@@ -94,6 +111,9 @@ export const adminApi = {
       status,
       limit: 50,
     }).then((r) => r.disputes),
+  // One dispute with its evidence photos.
+  dispute: (jobId: string) =>
+    get<{ dispute: AdminDispute }>(`/api/admin/disputes/${jobId}`).then((r) => r.dispute),
   payments: (status?: string) =>
     get<{ payments: AdminPayment[]; nextCursor: string | null }>('/api/admin/payments', {
       status,

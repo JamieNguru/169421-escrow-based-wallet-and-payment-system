@@ -38,8 +38,12 @@ npm run lint       # oxlint
 
 The API doesn't carry some of what the wireframes show, so these are left out rather than invented:
 
-- Log in with email (the API has no phone login); sign-up also asks for an email and has no country/currency picker.
-- Job location, distance, categories and "needed by" dates, and job photos.
-- Per-applicant price and trust level on Choose a Worker, and the client's trust level on job cards.
-- The "split" option when resolving a dispute (the API supports release or refund only), and dispute photos.
+- Sign-up asks for an email and has no country/currency picker (every wallet is in KES).
+- Job categories and "needed by" dates (jobs have a location, distance and photos, but no category or date).
+- Per-applicant price on Choose a Worker: an application has no price, so the job's budget applies. The trust badge is shown.
 - Trust inputs such as "jobs done" (the API returns the level and probabilities only).
+
+## Photos and location
+
+- Photos are shrunk in the browser (`src/lib/images.ts`) and sent as data URLs inside the job or dispute document, three at most, because no file storage is configured. Lists carry a photo count; the photos load when a worker taps "View photos" or an admin opens a dispute.
+- "Use my current position" on Post a Job and "Near me" on Find Jobs use the browser's location (the browser asks for permission). Distances are straight-line, not driving distance.

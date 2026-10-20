@@ -34,6 +34,7 @@ export type EscrowStatus =
   | 'disputed'
   | 'completed'
   | 'refunded'
+  | 'split'
 
 export interface Escrow {
   jobId: string
@@ -48,6 +49,14 @@ export interface Escrow {
   completedAt?: string
   refundedAt?: string
   disputedAt?: string
+  clientAmount?: number
+  workerAmount?: number
+}
+
+export interface JobLocation {
+  label: string
+  lat?: number
+  lng?: number
 }
 
 export interface Job {
@@ -59,6 +68,12 @@ export interface Job {
   budget: number
   currency: Currency
   status: 'open' | 'assigned'
+  location?: JobLocation
+  // Lists carry the count; GET /api/jobs/:jobId adds the photos (data URLs).
+  photoCount?: number
+  photos?: string[]
+  // Set when the worker sent a position and the job has coordinates.
+  distanceKm?: number
   createdAt: string
 }
 
@@ -75,7 +90,7 @@ export interface Application {
   message?: string
   status: 'pending' | 'selected' | 'rejected'
   createdAt: string
-  worker: { id: string; name: string; email: string }
+  worker: { id: string; name: string; email: string; trustLevel?: TrustLevel }
 }
 
 export interface Transaction {
@@ -124,7 +139,11 @@ export interface AdminDispute {
   workerId: string
   workerName?: string
   createdAt: string
-  decision?: 'release' | 'refund'
+  photoCount?: number
+  photos?: string[]
+  decision?: 'release' | 'refund' | 'split'
+  clientAmount?: number
+  workerAmount?: number
   resolution?: string
 }
 

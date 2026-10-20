@@ -49,7 +49,9 @@ interface ButtonStyle {
 
 const buttonClass = ({ tone = 'outline', small, className }: ButtonStyle) =>
   cx(
-    'flex w-full items-center justify-center gap-2 rounded-xl border-2 font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+    // Full width unless the caller sets its own width (e.g. w-[120px]).
+    'flex items-center justify-center gap-2 rounded-xl border-2 font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+    !/(^|\s)w-\[/.test(className ?? '') && 'w-full',
     small ? 'h-[42px] text-[15px]' : 'h-[52px] text-[17px]',
     TONES[tone],
     className,

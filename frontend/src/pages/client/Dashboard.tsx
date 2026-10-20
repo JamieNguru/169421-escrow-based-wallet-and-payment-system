@@ -31,6 +31,9 @@ function JobCard({ job }: { job: MyJob }) {
   } else if (job.escrowStatus === 'completed') {
     status = <Chip>Paid</Chip>
     footer = `Worker: ${job.counterpartyName ?? ''}`
+  } else if (job.escrowStatus === 'split') {
+    status = <Chip tone="grey">Settled by admin</Chip>
+    footer = 'An admin split the payment between you and the worker'
   } else {
     status = <Chip tone="grey">Refunded</Chip>
   }

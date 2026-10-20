@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 
 import { escrowApi } from '../../api/api'
 import { Page } from '../../components/AppShell'
+import { PhotoPicker } from '../../components/Photos'
 import { Button, Card, ErrorNote, Label, PageHead, Small, TextArea } from '../../components/ui'
 import { formatMoney } from '../../lib/format'
 import { useAsync } from '../../hooks/useAsync'
@@ -21,6 +22,7 @@ export default function ReportProblem() {
   const escrow = useAsync(() => escrowApi.get(jobId))
   const [reason, setReason] = useState(REASONS[0])
   const [details, setDetails] = useState('')
+  const [photos, setPhotos] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -28,7 +30,7 @@ export default function ReportProblem() {
     setBusy(true)
     setError(null)
     try {
-      await escrowApi.dispute(jobId, details.trim() ? `${reason}: ${details.trim()}` : reason)
+      await escrowApi.dispute(jobId, details.trim() ? `${reason}: ${details.trim()}` : reason, photos)
       navigate('/client')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not send your report')
@@ -64,6 +66,10 @@ export default function ReportProblem() {
             })}
           </div>
           <TextArea label="Tell us more" value={details} onChange={(e) => setDetails(e.target.value)} maxLength={900} placeholder="Only the front of the gate was painted. The back was not done." />
+          <div>
+            <div className="mb-1.5 text-sm font-bold text-neutral-700">Add photos (optional)</div>
+            <PhotoPicker photos={photos} onChange={setPhotos} />
+          </div>
         </Card>
         <Card>
           <Label>What happens next</Label>
