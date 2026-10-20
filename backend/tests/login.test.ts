@@ -79,6 +79,28 @@ describe("POST /api/auth/login", () => {
     expect(wrongPassword.body.error).toBe("Invalid email or password");
   });
 
+  test("refuses a suspended account with 403, but only once the password is right", async () => {
+    store.set("clients/c1", { ...store.get("clients/c1"), status: "suspended" });
+
+    const suspended = await request(app).post("/api/auth/login").send({ email: "jane@example.com", password });
+    const wrongPassword = await request(app)
+      .post("/api/auth/login")
+      .send({ email: "jane@example.com", password: "not-the-password" });
+
+    expect(suspended.status).toBe(403);
+    expect(suspended.body.error).toBe("This account has been suspended");
+    expect(suspended.body).not.toHaveProperty("token");
+    expect(wrongPassword.status).toBe(401);
+  });
+
+  test("lets a reactivated account log in again", async () => {
+    store.set("clients/c1", { ...store.get("clients/c1"), status: "active" });
+
+    const res = await request(app).post("/api/auth/login").send({ email: "jane@example.com", password });
+
+    expect(res.status).toBe(200);
+  });
+
   test.each([
     ["missing email", { password }],
     ["invalid email", { email: "nope", password }],

@@ -1,6 +1,7 @@
 import express, { type Express } from "express";
 import cors from "cors";
 
+import adminRouter from "./routes/admin";
 import authRouter from "./routes/auth";
 import escrowRouter from "./routes/escrow";
 import healthRouter from "./routes/health";
@@ -19,6 +20,7 @@ export function createApp(): Express {
 
   app.use("/api/health", healthRouter);
   app.use("/api/auth", authRouter);
+  app.use("/api/admin", adminRouter);
   app.use("/api/trust-score", trustScoreRouter);
   app.use("/api/escrow", escrowRouter);
   app.use("/api/transactions", transactionsRouter);
