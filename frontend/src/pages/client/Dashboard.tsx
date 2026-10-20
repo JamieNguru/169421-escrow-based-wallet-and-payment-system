@@ -1,16 +1,18 @@
+import type { ReactNode } from 'react'
+
 import { jobsApi, trustApi, walletApi } from '../../api/api'
 import type { MyJob } from '../../api/types'
 import { useAuth } from '../../auth/AuthContext'
 import { Page } from '../../components/AppShell'
-import { Async, Card, Chip, Empty, Label, LinkButton, Money, SectionTitle, Small, TrustBadge } from '../../components/ui'
+import { Async, Card, Chip, Empty, Greeting, HeroCard, IconBubble, Label, LinkButton, Money, SectionTitle, Small, TrustBadge } from '../../components/ui'
 import { useAsync } from '../../hooks/useAsync'
 import { firstName, formatMoney } from '../../lib/format'
 
 // What the client sees on a job card and what they can do next (wireframe 03).
 function JobCard({ job }: { job: MyJob }) {
-  let status: React.ReactNode
-  let action: React.ReactNode = null
-  let footer: React.ReactNode = null
+  let status: ReactNode
+  let action: ReactNode = null
+  let footer: ReactNode = null
 
   if (job.status === 'open') {
     const n = job.applicantCount ?? 0
@@ -39,9 +41,12 @@ function JobCard({ job }: { job: MyJob }) {
   }
 
   return (
-    <Card>
-      <div className="text-[17px] font-bold">{job.title}</div>
-      <div className="mt-1.5">{status}</div>
+    <Card interactive>
+      <div className="flex items-start justify-between gap-3">
+        <div className="text-[17px] font-bold leading-snug">{job.title}</div>
+        <div className="shrink-0 text-sm font-bold text-neutral-500">{formatMoney(job.budget, job.currency)}</div>
+      </div>
+      <div className="mt-2">{status}</div>
       <div className="mt-4 flex-1" />
       {action}
       {footer && <Small>{footer}</Small>}
@@ -58,27 +63,31 @@ export default function ClientDashboard() {
   return (
     <Page
       header={
-        <div>
-          <h1 className="m-0 text-[22px] font-bold">Hi, {user ? firstName(user.name) : ''}</h1>
-          <div className="mt-1.5 min-h-[30px]">{trust.data && <TrustBadge level={trust.data.trustLevel} />}</div>
-        </div>
+        <Greeting
+          name={user ? firstName(user.name) : ''}
+          badge={trust.data && <TrustBadge level={trust.data.trustLevel} />}
+        />
       }
     >
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card className="md:col-span-2">
+      <div className="grid gap-5 md:grid-cols-3">
+        <HeroCard className="md:col-span-2">
           <Label>Wallet balance</Label>
           <Async state={wallet}>
             {(w) => (
               <>
-                <Money>{formatMoney(w.balance, w.currency)}</Money>
-                <Small>{formatMoney(w.escrowBalance, w.currency)} held safely for your jobs</Small>
+                <Money size="text-5xl">{formatMoney(w.balance, w.currency)}</Money>
+                <div className="mt-3 inline-flex items-center gap-2 self-start rounded-full bg-white/80 px-3.5 py-1.5 text-sm font-semibold text-brand-dark ring-1 ring-[#cfe9d8]">
+                  <span className="h-2 w-2 rounded-full bg-brand" />
+                  {formatMoney(w.escrowBalance, w.currency)} held safely for your jobs
+                </div>
               </>
             )}
           </Async>
-        </Card>
+        </HeroCard>
         <Card>
-          <Label>Need help with something?</Label>
-          <Small className="mb-3 mt-1.5">Describe the job and workers near you can apply.</Small>
+          <IconBubble name="briefcase" />
+          <div className="mt-3 text-lg font-bold">Need help with something?</div>
+          <Small className="mb-4 mt-1">Describe the job and workers near you can apply.</Small>
           <div className="flex-1" />
           <LinkButton to="/client/post-job" tone="dark" icon="plus">Post a Job</LinkButton>
         </Card>
@@ -88,9 +97,9 @@ export default function ClientDashboard() {
       <Async state={jobs}>
         {(list) =>
           list.length === 0 ? (
-            <Empty>You have not posted a job yet. Post one and workers can start applying.</Empty>
+            <Empty icon="briefcase">You have not posted a job yet. Post one and workers can start applying.</Empty>
           ) : (
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
               {list.map((job) => (
                 <JobCard key={job.id} job={job} />
               ))}

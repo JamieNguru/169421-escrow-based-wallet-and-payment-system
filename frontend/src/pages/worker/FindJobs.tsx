@@ -82,7 +82,7 @@ export default function FindJobs() {
           type="button"
           disabled={locating}
           onClick={() => void findMe()}
-          className="flex h-[46px] shrink-0 items-center justify-center gap-1.5 rounded-[10px] border-[1.5px] border-[#cfd4db] bg-white px-4 text-[15px] hover:bg-canvas disabled:opacity-50"
+          className="flex h-12 shrink-0 items-center justify-center gap-1.5 rounded-2xl border-[1.5px] border-line bg-white px-4 text-[15px] font-semibold shadow-sm transition hover:border-neutral-300 hover:bg-neutral-50 disabled:opacity-50"
         >
           <Icon name="pin" size={18} />
           {locating ? 'Finding you…' : near ? 'Near you' : 'Near me'}
@@ -103,7 +103,7 @@ export default function FindJobs() {
 
       {error && <ErrorNote message={error} />}
       {!error && !loading && visible.length === 0 && <Empty>No jobs match. Try another search.</Empty>}
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-5 md:grid-cols-3">
         {visible.map((job) => (
           <JobTile key={job.id} job={job} />
         ))}

@@ -13,7 +13,7 @@ export default function ClientWallet() {
     <Page header={<PageHead title="Wallet" sub="Your money and the jobs it is held for" />}>
       <Async state={wallet}>
         {(w) => (
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-5 sm:grid-cols-2">
             <Card>
               <Label>Wallet balance</Label>
               <Money>{formatMoney(w.balance, w.currency)}</Money>
@@ -34,7 +34,7 @@ export default function ClientWallet() {
           const todo = list.filter((j) => j.status === 'assigned' && (!j.escrowStatus || j.escrowStatus === 'pending' || j.escrowStatus === 'work_submitted'))
           if (todo.length === 0) return <Empty>Nothing to pay or release right now.</Empty>
           return (
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid gap-5 md:grid-cols-3">
               {todo.map((job) =>
                 job.escrowStatus === 'work_submitted' ? (
                   <Card key={job.id}>

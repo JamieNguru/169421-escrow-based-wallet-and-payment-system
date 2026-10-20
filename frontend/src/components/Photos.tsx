@@ -31,7 +31,7 @@ export function PhotoPicker({ photos, onChange }: { photos: string[]; onChange: 
     <div>
       <div className="flex flex-wrap gap-2.5">
         {photos.map((src, i) => (
-          <div key={i} className="relative h-24 w-24 overflow-hidden rounded-[10px] border-[1.5px] border-line">
+          <div key={i} className="relative h-24 w-24 overflow-hidden rounded-2xl border border-line shadow-sm">
             <img src={src} alt={`Photo ${i + 1}`} className="h-full w-full object-cover" />
             <button
               type="button"
@@ -48,7 +48,7 @@ export function PhotoPicker({ photos, onChange }: { photos: string[]; onChange: 
             type="button"
             disabled={busy}
             onClick={() => input.current?.click()}
-            className="flex h-24 w-24 flex-col items-center justify-center gap-1 rounded-[10px] border-[1.5px] border-dashed border-[#b8bec6] bg-[#e9ecef] text-[13px] text-[#8a929c] hover:bg-[#dfe3e7] disabled:opacity-50"
+            className="flex h-24 w-24 flex-col items-center justify-center gap-1 rounded-2xl border-[1.5px] border-dashed border-neutral-300 bg-neutral-50 text-[13px] font-medium text-neutral-500 transition hover:border-brand hover:bg-brand-tint hover:text-brand disabled:opacity-50"
           >
             <Icon name="upload" />
             {busy ? 'Adding…' : 'Add photo'}
@@ -67,7 +67,7 @@ export function PhotoGallery({ photos }: { photos: string[] }) {
   return (
     <div className="flex flex-wrap gap-2.5">
       {photos.map((src, i) => (
-        <a key={i} href={src} target="_blank" rel="noreferrer" className="block h-24 w-24 overflow-hidden rounded-[10px] border-[1.5px] border-line">
+        <a key={i} href={src} target="_blank" rel="noreferrer" className="block h-24 w-24 overflow-hidden rounded-2xl border border-line shadow-sm">
           <img src={src} alt={`Photo ${i + 1}`} className="h-full w-full object-cover" />
         </a>
       ))}

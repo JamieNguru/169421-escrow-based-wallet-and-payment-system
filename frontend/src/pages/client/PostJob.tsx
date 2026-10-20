@@ -63,7 +63,7 @@ export default function PostJob() {
 
   return (
     <Page header={<PageHead title="Post a Job" sub="Tell workers what you need done" />}>
-      <form onSubmit={submit} className="grid gap-4 md:grid-cols-3">
+      <form onSubmit={submit} className="grid gap-5 md:grid-cols-3">
         <Card className="gap-3.5 md:col-span-2">
           <Field label="Job title" required value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Fix kitchen sink" />
           <TextArea label="Describe the work" required value={description} onChange={(e) => setDescription(e.target.value)} placeholder="The sink is leaking under the cupboard and the tap is loose." />

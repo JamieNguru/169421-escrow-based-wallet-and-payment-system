@@ -24,6 +24,9 @@ export const ageLabel = (iso: string) => {
   return days === 1 ? '1 day' : `${days} days`
 }
 
+// plural(1, 'job') is '1 job'; plural(2, 'job') is '2 jobs'.
+export const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+
 export const firstName = (name: string) => name.split(' ')[0]
 
 // "KES 418,000 · USD 30": one figure per currency, KES 0 when empty.

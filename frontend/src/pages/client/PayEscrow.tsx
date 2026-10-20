@@ -94,7 +94,7 @@ export default function PayEscrow() {
             <ErrorNote message="We could not find this job." />
           ) : (
             <>
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid gap-5 md:grid-cols-2">
                 <Card>
                   <Label>You are paying</Label>
                   <Money size="text-[40px]">{kes === null ? '…' : formatMoney(kes, 'KES')}</Money>

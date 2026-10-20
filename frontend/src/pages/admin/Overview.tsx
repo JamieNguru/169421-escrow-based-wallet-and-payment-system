@@ -3,14 +3,18 @@ import { Link } from 'react-router-dom'
 
 import { adminApi } from '../../api/api'
 import { Page } from '../../components/AppShell'
-import { Async, Card, Chip, Empty, Label, LinkButton, Money, PageHead, Small, TrustBadge } from '../../components/ui'
+import type { IconName } from '../../components/Icon'
+import { Async, Card, Chip, Empty, IconBubble, Label, LinkButton, Money, PageHead, Small, TrustBadge } from '../../components/ui'
 import { useAsync } from '../../hooks/useAsync'
-import { ageLabel, amountsLabel, formatMoney } from '../../lib/format'
+import { ageLabel, amountsLabel, formatMoney, plural } from '../../lib/format'
 
-function Kpi({ label, value, note, danger }: { label: string; value: string; note: string; danger?: boolean }) {
+function Kpi({ label, value, note, danger, icon }: { label: string; value: string; note: string; danger?: boolean; icon: IconName }) {
   return (
-    <Card>
-      <Label>{label}</Label>
+    <Card interactive>
+      <div className="flex items-center justify-between gap-3">
+        <Label>{label}</Label>
+        <IconBubble name={icon} tone={danger ? 'red' : 'green'} />
+      </div>
       <Money size="text-3xl">
         <span className={danger ? 'text-danger' : ''}>{value}</span>
       </Money>
@@ -31,14 +35,14 @@ export default function AdminOverview() {
       <Async state={overview}>
         {(o) => (
           <>
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <Kpi label="Money in escrow" value={amountsLabel(o.escrows.amounts.held)} note={`across ${(o.escrows.byStatus.in_escrow ?? 0) + (o.escrows.byStatus.work_submitted ?? 0) + (o.escrows.byStatus.disputed ?? 0)} jobs`} />
-              <Kpi label="Open disputes" value={String(o.disputes.open)} note="need your decision" danger={o.disputes.open > 0} />
-              <Kpi label="Payments today" value={String(o.activity.paymentsToday)} note={`${o.activity.failedPaymentsToday} failed`} />
-              <Kpi label="Active users" value={String(o.activity.activeUsers)} note="clients and workers" />
+            <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+              <Kpi icon="lock" label="Money in escrow" value={amountsLabel(o.escrows.amounts.held)} note={`across ${plural((o.escrows.byStatus.in_escrow ?? 0) + (o.escrows.byStatus.work_submitted ?? 0) + (o.escrows.byStatus.disputed ?? 0), 'job')}`} />
+              <Kpi icon="flag" label="Open disputes" value={String(o.disputes.open)} note="need your decision" danger={o.disputes.open > 0} />
+              <Kpi icon="wallet" label="Payments today" value={String(o.activity.paymentsToday)} note={`${o.activity.failedPaymentsToday} failed`} />
+              <Kpi icon="users" label="Active users" value={String(o.activity.activeUsers)} note="clients and workers" />
             </div>
 
-            <div className="grid gap-4 lg:grid-cols-5">
+            <div className="grid gap-5 lg:grid-cols-5">
               <Card className="lg:col-span-3">
                 <Label>Disputes needing action</Label>
                 <Async state={disputes}>

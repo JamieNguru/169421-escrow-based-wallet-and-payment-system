@@ -61,7 +61,7 @@ export default function ResolveDispute() {
           ]
 
           return (
-            <div className="grid gap-4 md:grid-cols-5">
+            <div className="grid gap-5 md:grid-cols-5">
               <Card className="md:col-span-3">
                 <div className="text-[19px] font-bold">{d.jobTitle ?? 'Job'}</div>
                 <Small className="mt-0.5">Opened {formatDate(d.createdAt)} · {amount} held in escrow</Small>
@@ -100,7 +100,7 @@ export default function ResolveDispute() {
                             role="radio"
                             aria-checked={on}
                             onClick={() => setDecision(o.id)}
-                            className={`flex items-center gap-2.5 rounded-[10px] px-3.5 py-3 text-left text-[15px] ${on ? 'border-2 border-brand bg-brand-tint' : 'border-[1.5px] border-line'}`}
+                            className={`flex items-center gap-2.5 rounded-2xl px-4 py-3.5 text-left text-[15px] font-medium transition ${on ? 'border-[1.5px] border-brand bg-brand-tint ring-4 ring-brand/10' : 'border-[1.5px] border-line bg-white hover:border-neutral-300'}`}
                           >
                             <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-brand">
                               {on && <span className="h-2.5 w-2.5 rounded-full bg-brand" />}

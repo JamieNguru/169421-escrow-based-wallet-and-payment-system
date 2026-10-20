@@ -4,7 +4,7 @@ import { adminApi } from '../../api/api'
 import { Page } from '../../components/AppShell'
 import { Async, Card, Chip, Empty, Label, Money, PageHead, Small, Table, Td } from '../../components/ui'
 import { useAsync } from '../../hooks/useAsync'
-import { amountsLabel, formatDateTime, formatMoney } from '../../lib/format'
+import { amountsLabel, formatDateTime, formatMoney, plural } from '../../lib/format'
 
 const FILTERS = [
   { id: undefined, label: 'All' },
@@ -25,21 +25,21 @@ export default function Payments() {
     <Page header={<PageHead title="Payments" sub="All M-Pesa and escrow activity" />}>
       <Async state={overview}>
         {(o) => (
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
             <Card>
               <Label>Held in escrow</Label>
               <Money size="text-[26px]">{amountsLabel(o.escrows.amounts.held)}</Money>
-              <Small>{o.escrows.byStatus.in_escrow ?? 0} funded jobs</Small>
+              <Small>{plural(o.escrows.byStatus.in_escrow ?? 0, 'funded job')}</Small>
             </Card>
             <Card>
               <Label>Released</Label>
               <Money size="text-[26px]">{amountsLabel(o.escrows.amounts.released)}</Money>
-              <Small>{o.escrows.byStatus.completed ?? 0} jobs paid</Small>
+              <Small>{plural(o.escrows.byStatus.completed ?? 0, 'job')} paid</Small>
             </Card>
             <Card>
               <Label>Refunded</Label>
               <Money size="text-[26px]">{amountsLabel(o.escrows.amounts.refunded)}</Money>
-              <Small>{o.escrows.byStatus.refunded ?? 0} refunds</Small>
+              <Small>{plural(o.escrows.byStatus.refunded ?? 0, 'refund')}</Small>
             </Card>
             <Card>
               <Label>Failed</Label>

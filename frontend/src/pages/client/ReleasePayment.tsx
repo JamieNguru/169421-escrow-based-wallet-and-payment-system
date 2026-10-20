@@ -68,7 +68,7 @@ export default function ReleasePayment() {
 
           return (
             <>
-              <div className="grid gap-4 md:grid-cols-5">
+              <div className="grid gap-5 md:grid-cols-5">
                 <Card className="md:col-span-3">
                   <div>
                     <Chip icon="lock">{escrow.status === 'completed' ? 'Released' : escrow.status === 'split' ? 'Split by admin' : 'Held safely'}</Chip>

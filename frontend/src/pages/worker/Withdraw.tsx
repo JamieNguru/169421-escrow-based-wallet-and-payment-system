@@ -37,7 +37,7 @@ export default function Withdraw() {
 
   return (
     <Page header={<PageHead title="Withdraw to M-Pesa" sub="Send your earnings to your phone" />}>
-      <div className="grid gap-4 md:grid-cols-5">
+      <div className="grid gap-5 md:grid-cols-5">
         <Card className="gap-3.5 md:col-span-3">
           <Async state={wallet}>
             {(w) => (

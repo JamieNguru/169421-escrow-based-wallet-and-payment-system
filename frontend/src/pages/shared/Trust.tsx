@@ -46,7 +46,7 @@ export default function Trust() {
       <Async state={state}>
         {(score) => (
           <>
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-5 md:grid-cols-2">
               <Card>
                 <Label>Your trust level</Label>
                 <Money>
@@ -80,7 +80,7 @@ export default function Trust() {
             </div>
 
             <SectionTitle>How sure the model is</SectionTitle>
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid gap-5 sm:grid-cols-3">
               {(['High', 'Medium', 'Low'] as const).map((level) => (
                 <Card key={level}>
                   <Label>{level} trust</Label>

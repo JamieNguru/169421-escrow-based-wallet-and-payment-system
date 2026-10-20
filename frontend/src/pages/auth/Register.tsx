@@ -54,8 +54,8 @@ export default function Register() {
                 type="button"
                 onClick={() => setRole(r.role)}
                 aria-pressed={on}
-                className={`flex flex-1 items-center justify-between rounded-xl p-4 text-left ${
-                  on ? 'border-2 border-brand bg-brand-tint' : 'border-[1.5px] border-line'
+                className={`flex flex-1 items-center justify-between rounded-2xl p-4 text-left transition ${
+                  on ? 'border-[1.5px] border-brand bg-brand-tint shadow-card ring-4 ring-brand/10' : 'border-[1.5px] border-line bg-white hover:border-neutral-300'
                 }`}
               >
                 <div>
