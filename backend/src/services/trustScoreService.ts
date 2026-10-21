@@ -1,6 +1,7 @@
 import { getDb } from "../config/firebase";
 import { getMlServiceUrl } from "../config/mlService";
 import { HttpError } from "../errors";
+import { toDate } from "./escrowService";
 
 const COLLECTIONS = { client: "clients", worker: "workers" } as const;
 const REQUEST_TIMEOUT_MS = 5000;
@@ -8,36 +9,129 @@ const UNAVAILABLE = "trust scoring unavailable";
 
 export type ScoredRole = keyof typeof COLLECTIONS;
 
-// Placeholder feature values for users with no stored stats. Once jobs and
-// escrow transactions exist, compute these from them instead.
-const DEFAULT_FEATURES: Record<ScoredRole, Record<string, number>> = {
-  worker: { job_completion_rate: 0.8, dispute_rate: 0.1, response_time_hours: 24 },
-  client: { payment_completion_rate: 0.9, refund_rate: 0.1, escrow_release_time_hours: 24 },
-};
+// A user needs this many settled jobs (paid out, refunded or split) before the
+// model scores them. With less history the numbers mean nothing: the models
+// were trained on users with hundreds of transactions, and a new account's
+// zero history looks to them like a bad one.
+export const MIN_FINISHED_JOBS = 3;
+
+export const NEW_LEVEL = "New";
 
 export interface TrustScore {
   userId: string;
   role: ScoredRole;
+  // "High", "Medium" or "Low" from the model, or "New" while there is too little history.
   trustLevel: string;
   probabilities: Record<string, number>;
+  // Only for "New": how many jobs are settled so far and how many more are needed.
+  finishedJobs?: number;
+  jobsNeeded?: number;
 }
 
-// Features are the role's defaults overridden by the optional trustStats field
-// on the user's document.
-export async function getTrustFeatures(
-  userId: string,
-  role: ScoredRole,
-): Promise<Record<string, number>> {
-  const doc = await getDb().collection(COLLECTIONS[role]).doc(userId).get();
-  const user = doc.data();
-  if (!doc.exists || !user) {
+const HOUR_MS = 3_600_000;
+const mean = (values: number[]) => (values.length ? values.reduce((a, b) => a + b, 0) / values.length : undefined);
+const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
+
+// Fallbacks for a feature that can't be worked out yet (for example, no job
+// has been submitted, so there is no response time). They sit near the middle
+// of the training data, so a missing value doesn't push a score either way.
+const NEUTRAL: Record<ScoredRole, Record<string, number>> = {
+  worker: { job_completion_rate: 0.99, dispute_rate: 0.01, response_time_hours: 9 },
+  client: { payment_completion_rate: 0.99, refund_rate: 0.01, escrow_release_time_hours: 9 },
+};
+
+interface History {
+  features: Record<string, number>;
+  finishedJobs: number;
+  // True when the user document carries hand-set trustStats (demo data).
+  overridden: boolean;
+}
+
+type Doc = { data: () => Record<string, any> };
+
+const hoursBetween = (from: unknown, to: unknown) =>
+  from && to ? (toDate(to).getTime() - toDate(from).getTime()) / HOUR_MS : undefined;
+
+// Works out the model's inputs from what the user has actually done on the
+// platform: their escrows, the disputes against or raised by them, and (for
+// clients) their refund requests. A stored `trustStats` field on the user
+// still wins, so demo accounts can be given any history.
+export async function getTrustHistory(userId: string, role: ScoredRole): Promise<History> {
+  const db = getDb();
+  const userDoc = await db.collection(COLLECTIONS[role]).doc(userId).get();
+  const user = userDoc.data();
+  if (!userDoc.exists || !user) {
     throw new HttpError(404, "User not found");
   }
-  return { ...DEFAULT_FEATURES[role], ...(user.trustStats ?? {}) };
+
+  if (user.trustStats) {
+    return { features: { ...NEUTRAL[role], ...user.trustStats }, finishedJobs: MIN_FINISHED_JOBS, overridden: true };
+  }
+
+  const party = role === "worker" ? "workerId" : "clientId";
+  const [escrowSnap, disputeSnap, refundSnap] = await Promise.all([
+    db.collection("escrows").where(party, "==", userId).get(),
+    db.collection("disputes").where(party, "==", userId).get(),
+    role === "client" ? db.collection("refundRequests").where("clientId", "==", userId).get() : undefined,
+  ]);
+
+  const escrows = (escrowSnap.docs as Doc[]).map((d) => d.data());
+  const paidOut = escrows.filter((e) => e.status === "completed" || e.status === "split").length;
+  const refunded = escrows.filter((e) => e.status === "refunded").length;
+  const finishedJobs = paidOut + refunded;
+  const completionRate = finishedJobs ? paidOut / finishedJobs : undefined;
+
+  if (role === "worker") {
+    // A dispute against the worker counts whoever raised it.
+    const disputes = disputeSnap.docs.length;
+    const response = mean(
+      escrows.map((e) => hoursBetween(e.fundedAt, e.workSubmittedAt)).filter((h): h is number => h !== undefined),
+    );
+    return {
+      features: {
+        job_completion_rate: completionRate ?? NEUTRAL.worker.job_completion_rate,
+        dispute_rate: escrows.length ? clamp01(disputes / escrows.length) : NEUTRAL.worker.dispute_rate,
+        response_time_hours: response ?? NEUTRAL.worker.response_time_hours,
+      },
+      finishedJobs,
+      overridden: false,
+    };
+  }
+
+  // For a client: disputes they raised and refunds they asked for both count against them.
+  const raised = (disputeSnap.docs as Doc[]).filter((d) => d.data().raisedByRole === "client").length;
+  const refundRequests = refundSnap?.docs.length ?? 0;
+  const release = mean(
+    escrows
+      .filter((e) => e.status === "completed")
+      .map((e) => hoursBetween(e.workSubmittedAt, e.completedAt))
+      .filter((h): h is number => h !== undefined),
+  );
+  return {
+    features: {
+      payment_completion_rate: completionRate ?? NEUTRAL.client.payment_completion_rate,
+      refund_rate: escrows.length ? clamp01((raised + refundRequests) / escrows.length) : NEUTRAL.client.refund_rate,
+      escrow_release_time_hours: release ?? NEUTRAL.client.escrow_release_time_hours,
+    },
+    finishedJobs,
+    overridden: false,
+  };
 }
 
 export async function getTrustScore(userId: string, role: ScoredRole): Promise<TrustScore> {
-  const features = await getTrustFeatures(userId, role);
+  const { features, finishedJobs, overridden } = await getTrustHistory(userId, role);
+
+  // Too little history to judge: say so, instead of letting the model call it Low.
+  if (!overridden && finishedJobs < MIN_FINISHED_JOBS) {
+    return {
+      userId,
+      role,
+      trustLevel: NEW_LEVEL,
+      probabilities: {},
+      finishedJobs,
+      jobsNeeded: MIN_FINISHED_JOBS - finishedJobs,
+    };
+  }
 
   let body: { trust_level?: unknown; probabilities?: unknown };
   try {

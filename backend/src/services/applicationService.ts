@@ -3,6 +3,7 @@ import { HttpError } from "../errors";
 import type { ApplyToJobInput } from "../validation/applications";
 import { toDate } from "./escrowService";
 import type { Job } from "./jobService";
+import { getTrustScore } from "./trustScoreService";
 
 export type ApplicationStatus = "pending" | "selected" | "rejected";
 
@@ -96,7 +97,42 @@ export async function selectWorker(
 }
 
 export interface ApplicationWithWorker extends Application {
-  worker: { id: string; name: string; email: string };
+  // trustLevel is left out when the scoring service can't be reached.
+  worker: { id: string; name: string; email: string; trustLevel?: string };
+}
+
+const TRUST_TTL_MS = 5 * 60 * 1000;
+const TRUST_BATCH_SIZE = 10;
+const trustCache = new Map<string, { level: string | undefined; expires: number }>();
+
+export function clearTrustCache(): void {
+  trustCache.clear();
+}
+
+// Trust levels for a list of workers, cached for a few minutes and scored a
+// batch at a time so a long applicant list doesn't flood the ML service. A
+// worker who can't be scored simply has no level.
+async function workerTrustLevels(workerIds: string[]): Promise<Map<string, string | undefined>> {
+  const levels = new Map<string, string | undefined>();
+  const missing: string[] = [];
+  const now = Date.now();
+  for (const id of new Set(workerIds)) {
+    const hit = trustCache.get(id);
+    if (hit && hit.expires > now) levels.set(id, hit.level);
+    else missing.push(id);
+  }
+
+  for (let i = 0; i < missing.length; i += TRUST_BATCH_SIZE) {
+    const batch = missing.slice(i, i + TRUST_BATCH_SIZE);
+    const results = await Promise.allSettled(batch.map((id) => getTrustScore(id, "worker")));
+    results.forEach((result, index) => {
+      const level = result.status === "fulfilled" ? result.value.trustLevel : undefined;
+      levels.set(batch[index], level);
+      // Failures aren't cached, so the next page load tries again.
+      if (level) trustCache.set(batch[index], { level, expires: now + TRUST_TTL_MS });
+    });
+  }
+  return levels;
 }
 
 export interface ApplicationPage {
@@ -121,8 +157,8 @@ export async function listJobApplications(
   if (before) q = q.where("createdAt", "<", before);
   const snapshot = await q.orderBy("createdAt", "desc").limit(limit).get();
 
-  // Only id, name and email leave the workers collection: never the password hash.
-  const applications = await Promise.all(
+  // Only id, name, email and trust level leave the workers collection: never the password hash.
+  const applications: ApplicationWithWorker[] = await Promise.all(
     snapshot.docs.map(async (doc) => {
       const data = doc.data();
       const worker = await db.collection("workers").doc(data.workerId).get();
@@ -134,6 +170,12 @@ export async function listJobApplications(
       };
     }),
   );
+
+  const levels = await workerTrustLevels(applications.map((a) => a.workerId));
+  for (const application of applications) {
+    const trustLevel = levels.get(application.workerId);
+    if (trustLevel) application.worker.trustLevel = trustLevel;
+  }
 
   const nextCursor =
     applications.length === limit ? applications[applications.length - 1].createdAt.toISOString() : null;

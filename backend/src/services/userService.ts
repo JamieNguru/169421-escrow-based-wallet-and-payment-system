@@ -28,8 +28,9 @@ export interface RegisteredUser {
   walletId?: string;
 }
 
-// Each role lives in its own collection, so email uniqueness is enforced
-// through an emails/{email} index doc written in the same transaction.
+// Each role lives in its own collection, so email and phone uniqueness are
+// enforced through emails/{email} and phones/{phone} index docs written in the
+// same transaction (login looks users up through them).
 // Public registration only allows client and worker (see registerSchema);
 // admins are created by the seed script. Clients and workers also get a
 // wallet, written in the same transaction; admins don't hold funds.
@@ -38,6 +39,7 @@ export async function createUser(input: NewUser): Promise<RegisteredUser> {
   const passwordHash = await bcrypt.hash(input.password, BCRYPT_ROUNDS);
 
   const emailRef = db.collection("emails").doc(input.email);
+  const phoneRef = input.phone ? db.collection("phones").doc(input.phone) : undefined;
   const userRef = db.collection(COLLECTIONS[input.role]).doc();
   const walletRef = input.role === "admin" ? undefined : db.collection("wallets").doc();
 
@@ -45,7 +47,11 @@ export async function createUser(input: NewUser): Promise<RegisteredUser> {
     if ((await tx.get(emailRef)).exists) {
       throw new HttpError(409, "An account with this email already exists");
     }
+    if (phoneRef && (await tx.get(phoneRef)).exists) {
+      throw new HttpError(409, "An account with this phone number already exists");
+    }
     tx.set(emailRef, { role: input.role, userId: userRef.id });
+    if (phoneRef) tx.set(phoneRef, { role: input.role, userId: userRef.id });
     tx.set(userRef, {
       name: input.name,
       email: input.email,
@@ -79,16 +85,18 @@ export function registerUser(input: RegisterInput): Promise<RegisteredUser> {
   return createUser(input);
 }
 
-// Compared against when the email is unknown, so response time doesn't reveal
-// which emails are registered.
+// Compared against when the email or phone is unknown, so response time doesn't
+// reveal which are registered.
 const DUMMY_HASH = bcrypt.hashSync("not-a-real-password", BCRYPT_ROUNDS);
-const INVALID_LOGIN = "Invalid email or password";
+const INVALID_LOGIN = "Invalid email/phone or password";
 
 export async function authenticateUser(input: LoginInput): Promise<RegisteredUser> {
   const db = getDb();
 
-  const emailDoc = await db.collection("emails").doc(input.email).get();
-  const { role, userId } = (emailDoc.data() ?? {}) as Partial<{ role: Role; userId: string }>;
+  const indexDoc = input.email
+    ? await db.collection("emails").doc(input.email).get()
+    : await db.collection("phones").doc(input.phone ?? "").get();
+  const { role, userId } = (indexDoc.data() ?? {}) as Partial<{ role: Role; userId: string }>;
   const userDoc = role && userId ? await db.collection(COLLECTIONS[role]).doc(userId).get() : undefined;
   const user = userDoc?.data();
 

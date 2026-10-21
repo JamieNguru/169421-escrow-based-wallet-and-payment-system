@@ -6,7 +6,9 @@ export type EscrowStatus =
   | "work_submitted"
   | "disputed"
   | "completed"
-  | "refunded";
+  | "refunded"
+  // An admin divided a disputed escrow between client and worker.
+  | "split";
 export type EscrowEvent =
   | "fund"
   | "submit_work"
@@ -14,7 +16,8 @@ export type EscrowEvent =
   | "refund"
   | "dispute"
   | "resolve_release"
-  | "resolve_refund";
+  | "resolve_refund"
+  | "resolve_split";
 export type EscrowActor = "client" | "worker" | "admin";
 
 export interface WalletEffect {
@@ -46,6 +49,14 @@ const toClient = (amount: number): WalletEffect[] => [
 
 const noEffects = (): WalletEffect[] => [];
 
+// The escrow leaves the client's escrow balance; the client gets `clientAmount`
+// back and the worker is paid the rest.
+export const splitEffects = (amount: number, clientAmount: number): WalletEffect[] => [
+  { party: "client", field: "escrowBalance", delta: -amount },
+  { party: "client", field: "balance", delta: clientAmount },
+  { party: "worker", field: "balance", delta: amount - clientAmount },
+];
+
 export const TRANSITIONS: Readonly<
   Partial<Record<EscrowStatus, Partial<Record<EscrowEvent, TransitionRule>>>>
 > = {
@@ -65,6 +76,8 @@ export const TRANSITIONS: Readonly<
   disputed: {
     resolve_release: { to: "completed", actors: ["admin"], effects: toWorker },
     resolve_refund: { to: "refunded", actors: ["admin"], effects: toClient },
+    // The wallet changes depend on the chosen amounts, so the caller applies splitEffects.
+    resolve_split: { to: "split", actors: ["admin"], effects: noEffects },
   },
 };
 

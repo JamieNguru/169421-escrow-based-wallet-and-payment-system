@@ -237,4 +237,65 @@ describe("POST /api/escrow/:jobId/resolve-dispute", () => {
 
     expect(res.status).toBe(401);
   });
+
+  describe("split", () => {
+    test("divides the escrow between client and worker and records both halves", async () => {
+      const res = await resolve({ decision: "split", clientAmount: 200, resolution: "Half the work was done" });
+
+      expect(res.status).toBe(200);
+      expect(res.body.dispute).toMatchObject({
+        status: "resolved",
+        decision: "split",
+        clientAmount: 200,
+        workerAmount: 300,
+        resolvedBy: "admin1",
+      });
+      expect(store.get("wallets/c1")).toMatchObject({ balance: 200, escrowBalance: 0 });
+      expect(store.get("wallets/w1")).toMatchObject({ balance: 400 });
+      expect(store.get("escrows/job1")).toMatchObject({ status: "split", clientAmount: 200, workerAmount: 300 });
+      expect(store.get("escrows/job1")!.completedAt).toBeDefined();
+      expect(store.get("disputes/job1")).toMatchObject({ decision: "split", clientAmount: 200, workerAmount: 300 });
+      expect(ledger().sort()).toEqual(["transactions/refund-job1", "transactions/release-job1"]);
+      expect(store.get("transactions/refund-job1")).toMatchObject({ type: "escrow_refund", amount: 200, toUserId: "client1" });
+      expect(store.get("transactions/release-job1")).toMatchObject({ type: "escrow_release", amount: 300, toUserId: "worker1" });
+    });
+
+    test("rounds to cents so the two halves always add up to the escrow", async () => {
+      store.set("escrows/job1", { ...store.get("escrows/job1")!, amount: 100 });
+      store.set("wallets/c1", { ...store.get("wallets/c1")!, escrowBalance: 100 });
+
+      const res = await resolve({ decision: "split", clientAmount: 33.333, resolution: "Rough thirds" });
+
+      expect(res.status).toBe(200);
+      expect(res.body.dispute).toMatchObject({ clientAmount: 33.33, workerAmount: 66.67 });
+      expect(store.get("wallets/c1")).toMatchObject({ balance: 33.33, escrowBalance: 0 });
+      expect(store.get("wallets/w1")!.balance).toBeCloseTo(166.67, 2);
+    });
+
+    test.each([
+      ["a split with no clientAmount", { decision: "split", resolution: "x" }],
+      ["a zero clientAmount", { decision: "split", clientAmount: 0, resolution: "x" }],
+      ["a negative clientAmount", { decision: "split", clientAmount: -5, resolution: "x" }],
+    ])("rejects %s with 400", async (_label, body) => {
+      expect((await resolve(body)).status).toBe(400);
+    });
+
+    test("rejects a clientAmount equal to or above the escrow and moves no money", async () => {
+      const res = await resolve({ decision: "split", clientAmount: 500, resolution: "All back" });
+
+      expect(res.status).toBe(400);
+      expect(store.get("escrows/job1")).toMatchObject({ status: "disputed" });
+      expect(store.get("wallets/c1")).toMatchObject({ balance: 0, escrowBalance: 500 });
+      expect(ledger()).toEqual([]);
+    });
+
+    test("cannot be resolved a second time", async () => {
+      await resolve({ decision: "split", clientAmount: 200, resolution: "First" });
+      const again = await resolve({ decision: "split", clientAmount: 100, resolution: "Second" });
+
+      expect(again.status).toBe(409);
+      expect(store.get("wallets/c1")).toMatchObject({ balance: 200 });
+    });
+  });
 });
+

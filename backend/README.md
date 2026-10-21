@@ -23,10 +23,12 @@ Create a Firebase project, enable Firestore, then download a service account key
 
 - `role` is `client` or `worker`; admins cannot self-register.
 - `phone` accepts `07xx`, `01xx`, `+254...` or `254...` and is stored as `254XXXXXXXXX`.
-- Returns `201` with `{ id, name, email, phone, role }`, `400` for invalid input, `409` if the email is taken.
-- Users are stored in the `clients` or `workers` collection with a bcrypt `passwordHash`. An `emails/{email}` doc enforces uniqueness across both.
+- Returns `201` with `{ id, name, email, phone, role }`, `400` for invalid input, `409` if the email or phone number is taken.
+- Users are stored in the `clients` or `workers` collection with a bcrypt `passwordHash`. `emails/{email}` and `phones/{phone}` docs enforce uniqueness across both roles and are how login finds a user.
 
-`POST /api/auth/login` takes `{ "email", "password" }` and returns `{ token, user }`. The token is a JWT (HS256) with `sub` (user id) and `role`, valid for `JWT_EXPIRES_IN` (default `1d`) and signed with `JWT_SECRET`. Send it as `Authorization: Bearer <token>`. A wrong email or password returns the same `401`, and invalid input returns `400`. Admins sign in the same way.
+`POST /api/auth/login` takes `{ "identifier", "password" }`, where `identifier` is an email or a Kenyan mobile number (`0712345678`, `+254712345678`, ...), and returns `{ token, user }`. `email` is still accepted as the field name. The token is a JWT (HS256) with `sub` (user id) and `role`, valid for `JWT_EXPIRES_IN` (default `1d`) and signed with `JWT_SECRET`. Send it as `Authorization: Bearer <token>`. A wrong email, phone or password, or an unknown email or phone, returns the same `401`, and invalid input returns `400`. Admins sign in the same way.
+
+Accounts created before phone login have no `phones/{phone}` entry, so run `npm run backfill:phones` once to add them (a phone shared by two accounts is reported and left alone).
 
 Admins cannot self-register. Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` in `.env` and run `npm run seed:admin` to create one in the `admins` collection.
 
@@ -44,16 +46,33 @@ router.get("/disputes", authenticate, requireRole("worker", "admin"), handler);
 
 ## Trust score
 
-The backend calls the Flask trust-scoring service (`trust-scoring-ml/`) at `ML_SERVICE_URL` (default `http://127.0.0.1:5000`) and returns `{ userId, role, trustLevel, probabilities }`.
+The backend calls the Flask trust-scoring service (`trust-scoring-ml/`) at `ML_SERVICE_URL` (default `http://127.0.0.1:5000`) and returns `{ userId, role, trustLevel, probabilities }` (`trustLevel` is `High`, `Medium`, `Low` or `New`).
 
 - `GET /api/trust-score/me`: a client or worker's own score.
 - `GET /api/trust-score/:userId?role=client|worker`: any client or worker's score, admin only.
 
-Features come from the optional `trustStats` object on the user's document, with placeholder defaults for anything missing, until job and escrow history can be computed. A missing user returns `404`; if the service is down, times out (5s) or errors, the response is `503`.
+**Where the model's inputs come from.** They are worked out from what the user has actually done (`src/services/trustScoreService.ts`):
+
+| Role | Input | How it is computed |
+|---|---|---|
+| Worker | `job_completion_rate` | Settled jobs paid out (`completed` or `split`) over all settled jobs (those plus `refunded`) |
+| Worker | `dispute_rate` | Disputes on the worker's jobs over their funded jobs |
+| Worker | `response_time_hours` | Average time from funding to the worker marking the work done |
+| Client | `payment_completion_rate` | Same paid-out over settled share, for the client's jobs |
+| Client | `refund_rate` | Refund requests plus disputes the client raised, over their funded jobs |
+| Client | `escrow_release_time_hours` | Average time from the work being marked done to the client releasing |
+
+An input that can't be worked out yet (for example, no job has been submitted) falls back to a neutral value near the middle of the training data.
+
+**New users are not scored.** Until a user has `MIN_FINISHED_JOBS` (3) settled jobs, the response is `{ userId, role, trustLevel: "New", probabilities: {}, finishedJobs, jobsNeeded }` and the model is not called. The models were trained on users with hundreds of transactions, so a brand-new account's empty history looked like a bad one and was always scored Low. `New` users are counted under `New` in the admin overview and are never in its low-trust list.
+
+A `trustStats` object on a user's document still overrides the computed inputs (and skips the 3-job rule), so demo accounts can be given any history.
+
+A missing user returns `404`; if the service is down, times out (5s) or errors, the response is `503`.
 
 ## Escrow state machine
 
-`src/services/escrowStateMachine.ts` defines the fund lifecycle as a pure module. It validates a status change and returns the wallet changes it implies; the caller applies them (e.g. in a Firestore transaction). `completed` and `refunded` are terminal.
+`src/services/escrowStateMachine.ts` defines the fund lifecycle as a pure module. It validates a status change and returns the wallet changes it implies; the caller applies them (e.g. in a Firestore transaction). `completed`, `refunded` and `split` are terminal.
 
 | Event | From to | Allowed actor |
 |---|---|---|
@@ -64,12 +83,14 @@ Features come from the optional `trustStats` object on the user's document, with
 | `dispute` | `in_escrow` or `work_submitted` to `disputed` | client, worker |
 | `resolve_release` | `disputed` to `completed` | admin |
 | `resolve_refund` | `disputed` to `refunded` | admin |
+| `resolve_split` | `disputed` to `split` | admin |
 
 Wallet effects for an amount `A`:
 
 - `fund`: client `balance` -A, client `escrowBalance` +A
 - `release`, `resolve_release`: client `escrowBalance` -A, worker `balance` +A
 - `refund`, `resolve_refund`: client `escrowBalance` -A, client `balance` +A
+- `resolve_split` with client share `C`: client `escrowBalance` -A, client `balance` +C, worker `balance` +(A-C) (applied by `splitEffects`, since it needs `C`)
 - `submit_work`, `dispute`: no change
 
 `transition(current, event, actor, amount)` throws `409` for an invalid state/event pair, `403` for an actor that isn't allowed, and `400` for a non-positive amount.
@@ -130,7 +151,7 @@ Body: `{ "reason": "..." }` (1-1000 characters). Returns `201` with `{ "refundRe
 
 | Status | Cause |
 |---|---|
-| `400` | `reason` is missing, empty or longer than 1000 characters |
+| `400` | `reason` is missing, empty or longer than 1000 characters, or a photo is invalid |
 | `401` | Missing or invalid token |
 | `403` | Wrong role, or the caller is not the client who funded the job |
 | `404` | No escrow exists for the job |
@@ -153,7 +174,7 @@ No body. Returns `200` with `{ "refundRequest": { ...request fields, status: "ap
 
 `POST /api/escrow/:jobId/dispute` (client or worker) lets either party on a job dispute it. It runs the `dispute` transition, sets the escrow `status` to `disputed` and stamps `disputedAt`, and stores `disputes/{jobId}` with status `open`. No money moves; an admin resolves the dispute later. The escrow must be `in_escrow` or `work_submitted`, so each job can be disputed once. The caller must be the escrow's client or its assigned worker.
 
-Body: `{ "reason": "..." }` (1-1000 characters). Returns `201` with `{ "dispute": { jobId, clientId, workerId, amount, currency, raisedBy, raisedByRole, reason, previousStatus, status, createdAt } }`.
+Body: `{ "reason": "...", "photos": ["data:image/jpeg;base64,..."] }`. `reason` is 1-1000 characters. `photos` is optional evidence: up to 3 PNG, JPEG or WebP data URLs, each under about 220 KB (they are stored inside the dispute document). Returns `201` with `{ "dispute": { jobId, clientId, workerId, amount, currency, raisedBy, raisedByRole, reason, photoCount, previousStatus, status, createdAt } }`; the photos themselves are only returned to admins (see Resolve dispute).
 
 | Status | Cause |
 |---|---|
@@ -165,13 +186,13 @@ Body: `{ "reason": "..." }` (1-1000 characters). Returns `201` with `{ "dispute"
 
 ## Resolve dispute
 
-`POST /api/escrow/:jobId/resolve-dispute` (admin only) settles a disputed escrow. It runs the `resolve_release` or `resolve_refund` transition, moves the money in one transaction, and marks `disputes/{jobId}` as `resolved`. `release` pays the worker, sets the escrow to `completed` and stamps `completedAt`. `refund` returns the money to the client's balance, sets the escrow to `refunded` and stamps `refundedAt`. Each writes one ledger entry (`release-{jobId}` or `refund-{jobId}`). A dispute can only be resolved once.
+`POST /api/escrow/:jobId/resolve-dispute` (admin only) settles a disputed escrow. It runs the `resolve_release`, `resolve_refund` or `resolve_split` transition, moves the money in one transaction, and marks `disputes/{jobId}` as `resolved`. `release` pays the worker, sets the escrow to `completed` and stamps `completedAt`. `refund` returns the money to the client's balance, sets the escrow to `refunded` and stamps `refundedAt`. `split` returns `clientAmount` to the client and pays the worker the rest (rounded to cents), sets the escrow to `split` with `clientAmount` and `workerAmount`, and stamps `completedAt`. Release and refund write one ledger entry (`release-{jobId}` or `refund-{jobId}`); a split writes both, each for its own share. A dispute can only be resolved once.
 
-Body: `{ "decision": "release" | "refund", "resolution": "..." }` (`resolution` is 1-1000 characters). Returns `200` with `{ "dispute": { ...dispute fields, status: "resolved", decision, resolution, resolvedBy, resolvedAt } }`.
+Body: `{ "decision": "release" | "refund" | "split", "clientAmount": 200, "resolution": "..." }`. `resolution` is 1-1000 characters. `clientAmount` is required for a split and must be greater than 0 and less than the escrow amount. Returns `200` with `{ "dispute": { ...dispute fields, status: "resolved", decision, clientAmount, workerAmount, resolution, resolvedBy, resolvedAt } }` (the amounts only for a split).
 
 | Status | Cause |
 |---|---|
-| `400` | `decision` is not `release` or `refund`, or `resolution` is missing, empty or longer than 1000 characters |
+| `400` | `decision` is not `release`, `refund` or `split`, a split has a missing or out-of-range `clientAmount`, or `resolution` is missing, empty or longer than 1000 characters |
 | `401` | Missing or invalid token |
 | `403` | The caller is not an admin |
 | `404` | No escrow, dispute or wallet exists for the job |
@@ -210,9 +231,17 @@ A suspended user gets `403` from `POST /api/auth/login`, after the password chec
   "withdrawals": { "total": 1, "byStatus": { "failed": 1 } },
   "disputes": { "total": 2, "open": 1, "resolved": 1 },
   "refundRequests": { "total": 2, "pending": 1, "approved": 1 },
-  "trust": { "scored": 2, "unavailable": 1, "byLevel": { "client": { "High": 2 }, "worker": {} } }
+  "trust": {
+    "scored": 2,
+    "unavailable": 1,
+    "byLevel": { "client": { "High": 2 }, "worker": {} },
+    "lowTrustUsers": [{ "id": "w1", "role": "worker", "name": "James Mwangi" }]
+  },
+  "activity": { "paymentsToday": 124, "failedPaymentsToday": 2, "activeUsers": 284 }
 }
 ```
+
+`activity` counts payments created since midnight East Africa Time (UTC+3) and users whose status is not `suspended`. `trust.lowTrustUsers` is the watch list for the admin dashboard.
 
 `amounts.held` covers escrows that are `in_escrow`, `work_submitted` or `disputed`, and each amount is summed per currency. `trust` scores every client and worker through the ML service (see Trust score), ten at a time; a user whose score can't be fetched counts as `unavailable` instead of failing the request, so this call is slow on a large user base.
 
@@ -220,6 +249,28 @@ A suspended user gets `403` from `POST /api/auth/login`, after the password chec
 |---|---|
 | `401` | Missing or invalid token |
 | `403` | The caller is not an admin |
+
+## Dashboard data endpoints
+
+These feed the frontend dashboards.
+
+`GET /api/wallet` (client or worker) returns the caller's wallet: `{ "wallet": { id, balance, escrowBalance, currency } }`. `404` if the user has no wallet.
+
+`GET /api/jobs/mine` (client or worker) returns `{ "jobs": [...] }`, newest first: the jobs a client posted, or the jobs assigned to a worker. Each job carries `escrowStatus` once funded, `counterpartyName` (the hired worker for a client, the client for a worker) and, for a client's open jobs, `applicantCount`.
+
+`GET /api/admin/disputes` (admin only) lists disputes newest first with `jobTitle`, `clientName`, `workerName` and `photoCount`. Query: `status` (`open` or `resolved`), `limit` (1 to 100, default 25), `cursor` (the previous `nextCursor`). Returns `{ "disputes": [...], "nextCursor" }`.
+
+`GET /api/admin/disputes/:jobId` (admin only) returns one dispute the same way with its evidence `photos` included, or `404`.
+
+`GET /api/admin/payments` (admin only) merges STK pushes (`kind: "payment"`) and withdrawals (`kind: "withdrawal"`) into one feed, newest first, with `userName` and any `failureReason`. Query: `status` (`pending`, `completed` or `failed`), `limit`, `cursor`. Returns `{ "payments": [...], "nextCursor" }`.
+
+| Status | Cause |
+|---|---|
+| `400` | Invalid `status`, `limit` or `cursor` |
+| `401` | Missing or invalid token |
+| `403` | Wrong role |
+
+Firestore composite indexes needed: `jobs` on `clientId` + `createdAt` desc and on `workerId` + `createdAt` desc; `disputes` on `status` + `createdAt` desc; `payments` and `withdrawals` on `status` + `createdAt` desc.
 
 ## View transaction history
 
@@ -315,16 +366,28 @@ Daraja reports the outcome to two public endpoints, `POST /api/payments/b2c/resu
 Request body:
 
 ```json
-{ "title": "Fix my sink", "description": "Leaking kitchen tap", "budget": 1500, "currency": "KES" }
+{
+  "title": "Fix my sink", "description": "Leaking kitchen tap", "budget": 1500, "currency": "KES",
+  "location": { "label": "Kilimani, Nairobi", "lat": -1.2921, "lng": 36.7872 },
+  "photos": ["data:image/jpeg;base64,..."]
+}
 ```
 
-`currency` is one of `KES`, `UGX`, `TZS`, `USD` (case-insensitive). Returns `201` with `{ "job": { "id", "clientId", "title", "description", "budget", "currency", "status", "createdAt" } }`.
+`currency` is one of `KES`, `UGX`, `TZS`, `USD` (case-insensitive). `location` is optional: `label` is required, and `lat` and `lng` come together (they let workers see a distance). `photos` is optional: up to 3 PNG, JPEG or WebP data URLs, each under about 220 KB. Photos are stored inside the job document (no file storage is configured), so the server accepts request bodies up to 2 MB.
+
+Returns `201` with `{ "job": { "id", "clientId", "title", "description", "budget", "currency", "status", "location", "photoCount", "createdAt" } }`. Lists and responses carry `photoCount`, never the photos.
+
+`GET /api/jobs/:jobId` (any signed-in role) returns `{ "job": { ...job, "photos": [...] } }` with the photos included, or `404`.
 
 | Status | Cause |
 | --- | --- |
 | `400` | Missing or invalid field |
 | `401` | Missing or invalid token |
 | `403` | Caller is not a client |
+
+## Browse jobs
+
+`GET /api/jobs` (worker only) lists open jobs, newest first. Query parameters (all optional): `limit` (1 to 100, default 20), `cursor` (the previous page's `nextCursor`), `currency`, and `lat` plus `lng` (the worker's position, sent together). When a position is sent, each job that has coordinates includes `distanceKm`, the straight-line distance rounded to 0.1 km. Returns `{ "jobs": [...], "nextCursor" }`. Jobs carry `photoCount`, not photos; fetch one job with `GET /api/jobs/:jobId` to see them.
 
 ## Apply for a job
 
@@ -348,7 +411,7 @@ Request body (optional):
 
 ## Review applications
 
-`GET /api/jobs/:jobId/applications` (client only) lists the applications for one of the caller's own jobs, newest first. Each application includes the applicant's `id`, `name` and `email` from `workers/{workerId}`.
+`GET /api/jobs/:jobId/applications` (client only) lists the applications for one of the caller's own jobs, newest first. Each application includes the applicant's `id`, `name` and `email` from `workers/{workerId}`, and their `trustLevel` (`High`, `Medium` or `Low`) from the trust-scoring service. Scores are cached for 5 minutes and fetched ten at a time; if the service can't score a worker, `trustLevel` is left out instead of failing the request.
 
 Query parameters: `limit` (1 to 100, default 20) and `cursor` (the previous page's `nextCursor`, an ISO date-time). Needs a Firestore composite index on `applications` (`jobId` ascending, `createdAt` descending).
 
@@ -360,7 +423,7 @@ Returns `200` with:
     {
       "id": "job1_worker1", "jobId": "job1", "workerId": "worker1", "message": "I can start tomorrow",
       "status": "pending", "createdAt": "2026-10-12T08:01:00.000Z",
-      "worker": { "id": "worker1", "name": "Amina", "email": "amina@example.com" }
+      "worker": { "id": "worker1", "name": "Amina", "email": "amina@example.com", "trustLevel": "High" }
     }
   ],
   "nextCursor": null

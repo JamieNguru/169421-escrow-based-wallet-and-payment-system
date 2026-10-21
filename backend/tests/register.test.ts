@@ -90,6 +90,19 @@ describe("POST /api/auth/register", () => {
     expect(await bcrypt.compare(valid.password, saved.passwordHash)).toBe(true);
   });
 
+  test("indexes the phone number for login and rejects a duplicate with 409", async () => {
+    const first = await request(app).post("/api/auth/register").send(valid);
+    const second = await request(app)
+      .post("/api/auth/register")
+      .send({ ...valid, email: "other@example.com", role: "worker" });
+
+    expect(first.status).toBe(201);
+    expect(store.get("phones/254712345678")).toEqual({ role: "client", userId: "id1" });
+    expect(second.status).toBe(409);
+    expect(second.body.error).toMatch(/phone/i);
+    expect(store.has("emails/other@example.com")).toBe(false);
+  });
+
   test("rejects a duplicate email with 409, even across roles", async () => {
     await request(app).post("/api/auth/register").send(valid);
     const res = await request(app)
