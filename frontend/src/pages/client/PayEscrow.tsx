@@ -1,29 +1,33 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { escrowApi, jobsApi, paymentsApi, walletApi } from '../../api/api'
-import type { Conversion } from '../../api/types'
+import type { Conversion, Payment } from '../../api/types'
 import { useAuth } from '../../auth/AuthContext'
 import { Page } from '../../components/AppShell'
+import MpesaWait from '../../components/MpesaWait'
 import { Async, Banner, Button, Card, ErrorNote, Field, Label, Money, PageHead, Select, Small } from '../../components/ui'
 import { useAsync } from '../../hooks/useAsync'
 import { formatMoney } from '../../lib/format'
 
-const POLL_MS = 3000
-const GIVE_UP_MS = 3 * 60 * 1000
 const OTHERS = ['UGX', 'TZS', 'USD'] as const
 
-// Pay into escrow with an M-Pesa STK push (wireframe 06). Payments are always
-// in whole KES, so a job priced in another currency is converted first.
+type Method = 'wallet' | 'mpesa'
+
+// Pay into escrow, from the wallet when it has enough or with an M-Pesa prompt
+// (wireframe 06). Payments are always in whole KES, so a job priced in another
+// currency is converted first.
 export default function PayEscrow() {
   const { jobId = '' } = useParams()
   const { user } = useAuth()
   const navigate = useNavigate()
   const jobs = useAsync(jobsApi.mine)
+  const wallet = useAsync(walletApi.get)
   const [phone, setPhone] = useState(user?.phone ?? '')
   const [kes, setKes] = useState<number | null>(null)
   const [quotes, setQuotes] = useState<Conversion[]>([])
-  const [waiting, setWaiting] = useState(false)
+  const [choice, setChoice] = useState<Method | null>(null)
+  const [started, setStarted] = useState<{ payment: Payment; message: string } | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -48,40 +52,50 @@ export default function PayEscrow() {
     }
   }, [job])
 
-  // After the prompt is sent, wait for the M-Pesa callback to fund the escrow.
-  useEffect(() => {
-    if (!waiting) return
-    const startedAt = Date.now()
-    const timer = setInterval(() => {
-      escrowApi
-        .get(jobId)
-        .then((escrow) => {
-          if (escrow.status !== 'pending') navigate('/client', { replace: true })
-        })
-        .catch(() => {
-          // 404 until the callback lands; keep waiting.
-        })
-      if (Date.now() - startedAt > GIVE_UP_MS) {
-        clearInterval(timer)
-        setWaiting(false)
-        setError('We did not get a confirmation from M-Pesa. If you were charged, check History in a minute.')
-      }
-    }, POLL_MS)
-    return () => clearInterval(timer)
-  }, [waiting, jobId, navigate])
+  const balance = wallet.data?.balance ?? 0
+  const canUseWallet = kes !== null && balance >= kes
+  // Use the wallet by default when it covers the job, until the client picks otherwise.
+  const method: Method = choice ?? (canUseWallet ? 'wallet' : 'mpesa')
 
-  const pay = async () => {
+  const payFromWallet = async () => {
     if (!job?.workerId || kes === null) return
     setBusy(true)
     setError(null)
     try {
-      await paymentsApi.stkPush({ jobId, workerId: job.workerId, amount: kes, phone: phone || undefined })
-      setWaiting(true)
+      await escrowApi.fund({ jobId, workerId: job.workerId, amount: kes })
+      navigate('/client', { replace: true })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not pay from your wallet')
+      setBusy(false)
+    }
+  }
+
+  const payWithMpesa = async () => {
+    if (!job?.workerId || kes === null) return
+    setBusy(true)
+    setError(null)
+    try {
+      const { payment, message } = await paymentsApi.stkPush({
+        jobId,
+        workerId: job.workerId,
+        amount: kes,
+        phone: phone || undefined,
+      })
+      setStarted({ payment, message })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not start the payment')
     } finally {
       setBusy(false)
     }
+  }
+
+  const settled = (payment: Payment) => {
+    if (payment.status === 'completed') {
+      navigate('/client', { replace: true })
+      return
+    }
+    setStarted(null)
+    setError(payment.failureReason ?? 'The payment did not go through. You have not been charged.')
   }
 
   return (
@@ -107,23 +121,49 @@ export default function PayEscrow() {
                     <Banner icon="lock">The worker does not get this money until you say the work is done.</Banner>
                   </div>
                 </Card>
+
                 <Card className="gap-3.5">
-                  <Select label="Pay from" disabled>
-                    <option>M-Pesa</option>
+                  <Select
+                    label="Pay from"
+                    value={method}
+                    disabled={busy || started !== null}
+                    onChange={(e) => setChoice(e.target.value as Method)}
+                    hint={
+                      wallet.data && kes !== null
+                        ? canUseWallet
+                          ? `Your wallet has ${formatMoney(balance, wallet.data.currency)}.`
+                          : `Your wallet has ${formatMoney(balance, wallet.data.currency)}, which is not enough. M-Pesa adds the money and pays in one step.`
+                        : undefined
+                    }
+                  >
+                    <option value="wallet" disabled={!canUseWallet}>
+                      Wallet{wallet.data ? ` (${formatMoney(balance, wallet.data.currency)})` : ''}
+                    </option>
+                    <option value="mpesa">M-Pesa</option>
                   </Select>
-                  <Field label="M-Pesa phone number" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="0712 345 678" disabled={waiting} />
+
+                  {method === 'mpesa' && (
+                    <Field label="M-Pesa phone number" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="0712 345 678" disabled={busy || started !== null} />
+                  )}
                   <div className="flex-1" />
-                  <Button tone="primary" icon="phone" disabled={busy || waiting || kes === null || !job.workerId} onClick={() => void pay()}>
-                    {kes === null ? 'Pay with M-Pesa' : `Pay ${formatMoney(kes, 'KES')} with M-Pesa`}
-                  </Button>
+
+                  {method === 'wallet' ? (
+                    <Button tone="primary" icon="wallet" disabled={busy || !canUseWallet || !job.workerId} onClick={() => void payFromWallet()}>
+                      {busy ? 'Paying…' : kes === null ? 'Pay from wallet' : `Pay ${formatMoney(kes, 'KES')} from wallet`}
+                    </Button>
+                  ) : (
+                    <Button tone="primary" icon="phone" disabled={busy || started !== null || kes === null || !job.workerId} onClick={() => void payWithMpesa()}>
+                      {kes === null ? 'Pay with M-Pesa' : `Pay ${formatMoney(kes, 'KES')} with M-Pesa`}
+                    </Button>
+                  )}
+                  <Small className="text-center">
+                    Want to add money first? <Link to="/client/wallet" className="font-bold text-brand-ink">Top up your wallet</Link>
+                  </Small>
                 </Card>
               </div>
+
               {error && <ErrorNote message={error} />}
-              {waiting && (
-                <Banner tone="amber" icon="clock" title="Check your phone">
-                  Enter your M-Pesa PIN on the pop-up to finish paying. This page updates by itself.
-                </Banner>
-              )}
+              {started && <MpesaWait payment={started.payment} message={started.message} onSettled={settled} />}
             </>
           )
         }

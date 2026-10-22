@@ -1,3 +1,9 @@
+// Local test mode: no real M-Pesa prompt is sent, and the pay screen offers a
+// "simulate payment" button. Never active in production.
+export function isSimulateMode(): boolean {
+  return process.env.DARAJA_SIMULATE === "true" && process.env.NODE_ENV !== "production";
+}
+
 export interface DarajaConfig {
   baseUrl: string;
   consumerKey: string;
@@ -58,6 +64,11 @@ export function getB2CConfig(): B2CConfig {
     resultUrl: required("DARAJA_B2C_RESULT_URL"),
     timeoutUrl: required("DARAJA_B2C_TIMEOUT_URL"),
   };
+}
+
+// Daraja does not sign callbacks, so the STK callback URL carries this secret as a path segment.
+export function getStkCallbackSecret(): string {
+  return required("DARAJA_STK_CALLBACK_SECRET");
 }
 
 // Daraja does not sign callbacks, so the callback URLs carry this secret as a path segment.

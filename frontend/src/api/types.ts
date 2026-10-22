@@ -115,11 +115,20 @@ export interface TrustScore {
   jobsNeeded?: number
 }
 
+export type PaymentStatus = 'pending' | 'completed' | 'failed'
+
 export interface Payment {
   checkoutRequestId: string
-  jobId: string
+  kind: 'escrow' | 'top_up'
+  jobId?: string
   amount: number
   currency: Currency
+  status: PaymentStatus
+  failureReason?: string
+  // True in the server's test mode: no real M-Pesa prompt was sent.
+  simulated?: boolean
+  // What settling did: funded the job's escrow, or only credited the wallet.
+  settlement?: 'escrow_funded' | 'wallet_credited'
 }
 
 export interface Withdrawal {
