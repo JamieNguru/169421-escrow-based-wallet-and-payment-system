@@ -75,7 +75,7 @@ export default function Withdraw() {
                       <div className="text-[15px] font-bold">{formatMoney(t.amount, t.currency)}</div>
                       <Small>{formatDate(t.createdAt)}</Small>
                     </div>
-                    <Chip>Sent</Chip>
+                    <Chip>Requested</Chip>
                   </div>
                 ))
               )

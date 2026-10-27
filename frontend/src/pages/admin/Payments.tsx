@@ -71,7 +71,7 @@ export default function Payments() {
               {rows.map((p) => (
                 <tr key={`${p.kind}-${p.id}`}>
                   <Td>{formatDateTime(p.createdAt)}</Td>
-                  <Td>{p.kind === 'payment' ? 'Escrow payment' : 'Withdrawal'}</Td>
+                  <Td>{p.kind === 'withdrawal' ? 'Withdrawal' : p.jobId ? 'Escrow payment' : 'Wallet top-up'}</Td>
                   <Td>{p.userName ?? p.userId}</Td>
                   <Td className="font-bold">{formatMoney(p.amount, p.currency)}</Td>
                   <Td>
