@@ -4,7 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { escrowApi } from '../../api/api'
 import { Page } from '../../components/AppShell'
 import { PhotoPicker } from '../../components/Photos'
-import { Button, Card, ErrorNote, Label, PageHead, Small, TextArea } from '../../components/ui'
+import { Button, Card, Chip, ErrorNote, Label, PageHead, Small, TextArea } from '../../components/ui'
 import { formatMoney } from '../../lib/format'
 import { useAsync } from '../../hooks/useAsync'
 
@@ -26,11 +26,15 @@ export default function ReportProblem() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const [wantsRefund, setWantsRefund] = useState(false)
+
   const send = async () => {
     setBusy(true)
     setError(null)
+    const text = details.trim() ? `${reason}: ${details.trim()}` : reason
     try {
-      await escrowApi.dispute(jobId, details.trim() ? `${reason}: ${details.trim()}` : reason, photos)
+      if (wantsRefund) await escrowApi.refundRequest(jobId, text)
+      else await escrowApi.dispute(jobId, text, photos)
       navigate('/client')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not send your report')
@@ -44,6 +48,10 @@ export default function ReportProblem() {
     <Page header={<PageHead title="Report a problem" sub={amount ? `${amount} held safely` : undefined} />}>
       <div className="grid gap-5 md:grid-cols-3">
         <Card className="gap-3.5 md:col-span-2">
+          <div className="flex gap-2">
+            <Chip tone={wantsRefund ? 'grey' : 'solid'} onClick={() => setWantsRefund(false)}>Report a problem</Chip>
+            <Chip tone={wantsRefund ? 'solid' : 'grey'} onClick={() => setWantsRefund(true)}>Ask for a refund</Chip>
+          </div>
           <div className="text-sm font-bold text-neutral-700">What went wrong?</div>
           <div className="grid gap-2.5 sm:grid-cols-2" role="radiogroup">
             {REASONS.map((r) => {
@@ -66,20 +74,24 @@ export default function ReportProblem() {
             })}
           </div>
           <TextArea label="Tell us more" value={details} onChange={(e) => setDetails(e.target.value)} maxLength={900} placeholder="Only the front of the gate was painted. The back was not done." />
-          <div>
-            <div className="mb-1.5 text-sm font-bold text-neutral-700">Add photos (optional)</div>
-            <PhotoPicker photos={photos} onChange={setPhotos} />
-          </div>
+          {!wantsRefund && (
+            <div>
+              <div className="mb-1.5 text-sm font-bold text-neutral-700">Add photos (optional)</div>
+              <PhotoPicker photos={photos} onChange={setPhotos} />
+            </div>
+          )}
         </Card>
         <Card>
           <Label>What happens next</Label>
           <Small className="mt-3 text-[14.5px] leading-snug">
-            The money stays held safely. An admin will look at both sides and decide.
+            {wantsRefund
+              ? 'The money stays held safely until an admin approves your refund.'
+              : 'The money stays held safely. An admin will look at both sides and decide.'}
           </Small>
           <div className="flex-1" />
           {error && <div className="mt-4"><ErrorNote message={error} /></div>}
           <Button tone="danger" icon="flag" className="mt-4" disabled={busy} onClick={() => void send()}>
-            {busy ? 'Sending…' : 'Send to admin'}
+            {busy ? 'Sending…' : wantsRefund ? 'Request refund' : 'Send to admin'}
           </Button>
         </Card>
       </div>

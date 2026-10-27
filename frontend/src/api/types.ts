@@ -178,6 +178,21 @@ export interface AdminDispute {
   workerKyc?: KycSummary | null
 }
 
+export interface AdminRefundRequest {
+  jobId: string
+  jobTitle?: string
+  amount: number
+  currency: Currency
+  reason: string
+  status: 'pending' | 'approved'
+  clientId: string
+  clientName?: string
+  workerId: string
+  workerName?: string
+  createdAt: string
+  processedAt?: string
+}
+
 export interface AdminPayment {
   id: string
   kind: 'payment' | 'withdrawal'

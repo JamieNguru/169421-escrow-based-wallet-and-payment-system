@@ -2,13 +2,14 @@ import { Router } from "express";
 
 import { HttpError } from "../errors";
 import { authenticate, requireRole } from "../middleware/auth";
-import { getDispute, listDisputes, listPayments } from "../services/adminListService";
+import { getDispute, listDisputes, listPayments, listRefundRequests } from "../services/adminListService";
 import { getKycForAdmin, listDisputedWorkerKyc } from "../services/kycService";
 import { getPlatformOverview } from "../services/overviewService";
 import { getUser, listUsers, setUserStatus } from "../services/userService";
 import {
   listDisputesQuerySchema,
   listPaymentsQuerySchema,
+  listRefundRequestsQuerySchema,
   listUsersQuerySchema,
   roleSchema,
   setUserStatusSchema,
@@ -44,6 +45,21 @@ router.get("/disputes", async (req, res, next) => {
 router.get("/disputes/:jobId", async (req, res, next) => {
   try {
     res.json({ dispute: await getDispute(String(req.params.jobId)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/refund-requests", async (req, res, next) => {
+  const parsed = listRefundRequestsQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    const message = parsed.error.issues.map((issue) => issue.message).join("; ");
+    return next(new HttpError(400, message));
+  }
+
+  try {
+    const { status, limit, cursor } = parsed.data;
+    res.json(await listRefundRequests({ status, limit, before: cursor }));
   } catch (err) {
     next(err);
   }

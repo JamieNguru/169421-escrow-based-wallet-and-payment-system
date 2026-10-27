@@ -93,6 +93,67 @@ export async function listDisputes({
   return { disputes, nextCursor };
 }
 
+export interface AdminRefundRequest {
+  jobId: string;
+  jobTitle?: string;
+  amount: number;
+  currency: string;
+  reason: string;
+  status: "pending" | "approved";
+  clientId: string;
+  clientName?: string;
+  workerId: string;
+  workerName?: string;
+  createdAt: Date;
+  processedAt?: Date;
+}
+
+export interface AdminRefundRequestPage {
+  refundRequests: AdminRefundRequest[];
+  nextCursor: string | null;
+}
+
+// Refund requests for the admin queue, newest first, with the job title and both parties' names.
+export async function listRefundRequests({
+  status,
+  limit,
+  before,
+}: {
+  status?: "pending" | "approved";
+  limit: number;
+  before?: Date;
+}): Promise<AdminRefundRequestPage> {
+  const db = getDb();
+  let q = db.collection("refundRequests") as any;
+  if (status) q = q.where("status", "==", status);
+  if (before) q = q.where("createdAt", "<", before);
+  const snapshot = await q.orderBy("createdAt", "desc").limit(limit).get();
+
+  const refundRequests = await Promise.all(
+    (snapshot.docs as Doc[]).map(async (doc) => {
+      const data = doc.data();
+      const [job, clientName, workerName] = await Promise.all([
+        db.collection("jobs").doc(data.jobId ?? doc.id).get(),
+        nameOf("clients", data.clientId),
+        nameOf("workers", data.workerId),
+      ]);
+      return {
+        ...(data as AdminRefundRequest),
+        jobId: data.jobId ?? doc.id,
+        jobTitle: job.exists ? job.data()!.title : undefined,
+        clientName,
+        workerName,
+        createdAt: toDate(data.createdAt),
+        ...(data.processedAt && { processedAt: toDate(data.processedAt) }),
+      };
+    }),
+  );
+
+  const nextCursor =
+    refundRequests.length === limit ? refundRequests[refundRequests.length - 1].createdAt.toISOString() : null;
+  return { refundRequests, nextCursor };
+}
+
 export interface AdminPayment {
   id: string;
   kind: "payment" | "withdrawal";
