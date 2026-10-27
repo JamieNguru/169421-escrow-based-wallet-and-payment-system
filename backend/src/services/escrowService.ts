@@ -8,6 +8,7 @@ import type {
   RequestRefundInput,
   ResolveDisputeInput,
 } from "../validation/escrow";
+import { amountDueKes, assertAmountMatches, assertPayable, jobTerms } from "./jobPricing";
 import { canTransition, splitEffects, transition, type EscrowStatus, type WalletEffect } from "./escrowStateMachine";
 
 export interface Escrow {
@@ -65,25 +66,32 @@ export async function getEscrow(
 export async function fundEscrow(clientId: string, input: FundEscrowInput): Promise<Escrow> {
   const db = getDb();
   const escrowRef = db.collection("escrows").doc(input.jobId);
+  const jobRef = db.collection("jobs").doc(input.jobId);
   const workerRef = db.collection("workers").doc(input.workerId);
   const walletQuery = db.collection("wallets").where("ownerId", "==", clientId).limit(1);
 
   return db.runTransaction(async (tx) => {
-    const [escrowSnap, workerSnap, walletSnap] = await Promise.all([
+    const [jobSnap, escrowSnap, workerSnap, walletSnap] = await Promise.all([
+      tx.get(jobRef),
       tx.get(escrowRef),
       tx.get(workerRef),
       tx.get(walletQuery),
     ]);
 
+    const job = assertPayable(jobSnap, clientId, input.workerId);
     if (!workerSnap.exists) throw new HttpError(404, "Worker not found");
     if (walletSnap.empty) throw new HttpError(404, "Client wallet not found");
 
+    // The amount comes from the job, not the request.
+    const amount = await amountDueKes(jobTerms(job));
+    assertAmountMatches(input.amount, amount);
+
     const current: EscrowStatus = escrowSnap.exists ? escrowSnap.data()!.status : "pending";
-    const { status, effects } = transition(current, "fund", "client", input.amount);
+    const { status, effects } = transition(current, "fund", "client", amount);
 
     const walletDoc = walletSnap.docs[0];
     const wallet = walletDoc.data();
-    if (wallet.balance < input.amount) {
+    if (wallet.balance < amount) {
       throw new HttpError(402, "Insufficient wallet balance");
     }
 
@@ -98,7 +106,7 @@ export async function fundEscrow(clientId: string, input: FundEscrowInput): Prom
       jobId: input.jobId,
       clientId,
       workerId: input.workerId,
-      amount: input.amount,
+      amount,
       currency: wallet.currency,
       status,
       createdAt: now,
@@ -110,7 +118,7 @@ export async function fundEscrow(clientId: string, input: FundEscrowInput): Prom
     tx.set(db.collection("transactions").doc(`fund-${input.jobId}`), {
       jobId: input.jobId,
       type: "escrow_fund",
-      amount: input.amount,
+      amount,
       currency: wallet.currency,
       fromUserId: clientId,
       toUserId: input.workerId,

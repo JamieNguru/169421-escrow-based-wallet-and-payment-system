@@ -6,7 +6,7 @@ import { useAuth } from '../../auth/AuthContext'
 import { Page } from '../../components/AppShell'
 import { Async, Card, Chip, Empty, Greeting, HeroCard, IconBubble, Label, LinkButton, Money, SectionTitle, Small, TrustBadge } from '../../components/ui'
 import { useAsync } from '../../hooks/useAsync'
-import { firstName, formatMoney } from '../../lib/format'
+import { firstName, formatJobPrice, formatMoney } from '../../lib/format'
 
 // What the client sees on a job card and what they can do next (wireframe 03).
 function JobCard({ job }: { job: MyJob }) {
@@ -26,7 +26,7 @@ function JobCard({ job }: { job: MyJob }) {
     action = <LinkButton to={`/client/jobs/${job.id}/release`} small tone="primary">Check &amp; pay worker</LinkButton>
   } else if (job.escrowStatus === 'in_escrow') {
     status = <Chip tone="amber">In progress</Chip>
-    footer = `Worker: ${job.counterpartyName ?? 'chosen'} · ${formatMoney(job.budget, job.currency)} held safely`
+    footer = `Worker: ${job.counterpartyName ?? 'chosen'} · ${formatJobPrice(job)} held safely`
   } else if (job.escrowStatus === 'disputed') {
     status = <Chip tone="red">Under review</Chip>
     footer = 'An admin is looking at this job'
@@ -44,7 +44,7 @@ function JobCard({ job }: { job: MyJob }) {
     <Card interactive>
       <div className="flex items-start justify-between gap-3">
         <div className="text-[17px] font-bold leading-snug">{job.title}</div>
-        <div className="shrink-0 text-sm font-bold text-neutral-500">{formatMoney(job.budget, job.currency)}</div>
+        <div className="shrink-0 text-sm font-bold text-neutral-500">{job.status === 'open' ? 'Budget ' : ''}{formatJobPrice(job)}</div>
       </div>
       <div className="mt-2">{status}</div>
       <div className="mt-4 flex-1" />

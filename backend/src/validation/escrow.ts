@@ -5,10 +5,12 @@ import { photosSchema } from "./photos";
 export const fundEscrowSchema = z.object({
   jobId: z.string().trim().min(1, "jobId is required"),
   workerId: z.string().trim().min(1, "workerId is required"),
+  // Optional: the server works out what is due from the job. A different amount is refused with 409.
   amount: z
     .number({ error: "amount must be a number" })
     .positive("amount must be greater than 0")
-    .finite("amount must be a finite number"),
+    .finite("amount must be a finite number")
+    .optional(),
 });
 
 export type FundEscrowInput = z.infer<typeof fundEscrowSchema>;

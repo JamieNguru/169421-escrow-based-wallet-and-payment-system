@@ -2,12 +2,13 @@ import { Router } from "express";
 
 import { HttpError } from "../errors";
 import { authenticate, requireRole } from "../middleware/auth";
-import { applyToJob, listJobApplications, selectWorker } from "../services/applicationService";
+import { applyToJob, listJobApplications, selectWorker, updateQuote } from "../services/applicationService";
 import { getJob, listMyJobs, listOpenJobs, postJob } from "../services/jobService";
 import {
   applyToJobSchema,
   listApplicationsQuerySchema,
   selectWorkerSchema,
+  updateQuoteSchema,
 } from "../validation/applications";
 import { browseJobsQuerySchema, postJobSchema } from "../validation/jobs";
 
@@ -60,6 +61,21 @@ router.post("/:jobId/apply", authenticate, requireRole("worker"), async (req, re
   }
 });
 
+router.patch("/:jobId/application", authenticate, requireRole("worker"), async (req, res, next) => {
+  const parsed = updateQuoteSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    const message = parsed.error.issues.map((issue) => issue.message).join("; ");
+    return next(new HttpError(400, message));
+  }
+
+  try {
+    const application = await updateQuote(req.user!.sub, String(req.params.jobId), parsed.data);
+    res.json({ application });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get("/:jobId/applications", authenticate, requireRole("client"), async (req, res, next) => {
   const parsed = listApplicationsQuerySchema.safeParse(req.query);
   if (!parsed.success) {
@@ -102,7 +118,7 @@ router.get("/", authenticate, requireRole("worker"), async (req, res, next) => {
   }
   try {
     const near = lat !== undefined && lng !== undefined ? { lat, lng } : undefined;
-    res.json(await listOpenJobs({ limit, before: cursor, currency, near }));
+    res.json(await listOpenJobs({ limit, before: cursor, currency, near, workerId: req.user!.sub }));
   } catch (err) {
     next(err);
   }

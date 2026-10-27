@@ -8,15 +8,16 @@ import { Page } from '../../components/AppShell'
 import MpesaWait from '../../components/MpesaWait'
 import { Async, Banner, Button, Card, ErrorNote, Field, Label, Money, PageHead, Select, Small } from '../../components/ui'
 import { useAsync } from '../../hooks/useAsync'
-import { formatMoney } from '../../lib/format'
+import { formatMoney, jobPrice } from '../../lib/format'
 
 const OTHERS = ['UGX', 'TZS', 'USD'] as const
 
 type Method = 'wallet' | 'mpesa'
 
 // Pay into escrow, from the wallet when it has enough or with an M-Pesa prompt
-// (wireframe 06). Payments are always in whole KES, so a job priced in another
-// currency is converted first.
+// (wireframe 06). The price is the quote agreed with the worker and is read-only:
+// the server works out the amount to charge, in whole KES, so nothing is sent.
+// A job priced in another currency is only converted here to show the figure.
 export default function PayEscrow() {
   const { jobId = '' } = useParams()
   const { user } = useAuth()
@@ -36,16 +37,17 @@ export default function PayEscrow() {
   useEffect(() => {
     if (!job) return
     let current = true
-    const targets = (['KES', ...OTHERS] as const).filter((c) => c !== job.currency)
-    Promise.all(targets.map((to) => walletApi.convert(job.currency, to, job.budget)))
+    const { amount, currency } = jobPrice(job)
+    const targets = (['KES', ...OTHERS] as const).filter((c) => c !== currency)
+    Promise.all(targets.map((to) => walletApi.convert(currency, to, amount)))
       .then((all) => {
         if (!current) return
         setQuotes(all)
         const toKes = all.find((q) => q.to === 'KES')
-        setKes(job.currency === 'KES' ? job.budget : toKes ? Math.ceil(toKes.converted) : null)
+        setKes(currency === 'KES' ? Math.ceil(amount) : toKes ? Math.ceil(toKes.converted) : null)
       })
       .catch(() => {
-        if (current) setKes(job.currency === 'KES' ? job.budget : null)
+        if (current) setKes(currency === 'KES' ? Math.ceil(amount) : null)
       })
     return () => {
       current = false
@@ -62,7 +64,7 @@ export default function PayEscrow() {
     setBusy(true)
     setError(null)
     try {
-      await escrowApi.fund({ jobId, workerId: job.workerId, amount: kes })
+      await escrowApi.fund({ jobId, workerId: job.workerId })
       navigate('/client', { replace: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not pay from your wallet')
@@ -78,7 +80,6 @@ export default function PayEscrow() {
       const { payment, message } = await paymentsApi.stkPush({
         jobId,
         workerId: job.workerId,
-        amount: kes,
         phone: phone || undefined,
       })
       setStarted({ payment, message })
@@ -110,7 +111,7 @@ export default function PayEscrow() {
             <>
               <div className="grid gap-5 md:grid-cols-2">
                 <Card>
-                  <Label>You are paying</Label>
+                  <Label>Agreed price</Label>
                   <Money size="text-[40px]">{kes === null ? '…' : formatMoney(kes, 'KES')}</Money>
                   {quotes.length > 0 && (
                     <Small>

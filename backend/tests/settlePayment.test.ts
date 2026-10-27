@@ -93,6 +93,8 @@ describe("settling M-Pesa payments", () => {
       jobId: "job1",
       workerId: "worker1",
       clientId: "client1",
+      agreedPrice: 500,
+      agreedCurrency: "KES",
       amount: 500,
       currency: "KES",
       phone: "254708374149",
@@ -109,7 +111,16 @@ describe("settling M-Pesa payments", () => {
     store.clear();
     store.set("wallets/w-client1", { ownerId: "client1", ownerRole: "client", currency: "KES", balance: 100, escrowBalance: 0 });
     store.set("workers/worker1", { name: "Peter" });
-    store.set("jobs/job1", { clientId: "client1", workerId: "worker1", title: "Fix sink", status: "assigned" });
+    store.set("jobs/job1", {
+      clientId: "client1",
+      workerId: "worker1",
+      title: "Fix sink",
+      status: "assigned",
+      budget: 900,
+      currency: "KES",
+      agreedPrice: 500,
+      agreedCurrency: "KES",
+    });
     seedPayment();
   });
 
@@ -193,6 +204,8 @@ describe("settling M-Pesa payments", () => {
     test.each([
       ["the job belongs to someone else", { clientId: "other" }],
       ["a different worker was chosen", { workerId: "worker2" }],
+      ["the agreed price changed after the payment started", { agreedPrice: 450 }],
+      ["the agreed currency changed after the payment started", { agreedCurrency: "USD" }],
     ])("keeps the money in the wallet when %s", async (_label, jobChange) => {
       store.set("jobs/job1", { ...store.get("jobs/job1")!, ...jobChange });
 
@@ -201,6 +214,16 @@ describe("settling M-Pesa payments", () => {
       expect(store.get("payments/ws_CO_1")).toMatchObject({ status: "completed", settlement: "wallet_credited" });
       expect(store.get("wallets/w-client1")).toMatchObject({ balance: 600, escrowBalance: 0 });
       expect(store.has("escrows/job1")).toBe(false);
+    });
+
+    test("a job from before quotes existed is paid at its budget", async () => {
+      store.set("jobs/job1", { ...store.get("jobs/job1")!, agreedPrice: undefined, agreedCurrency: undefined });
+      seedPayment({ agreedPrice: 900, amount: 900 });
+
+      await post(callback({}, 900));
+
+      expect(store.get("payments/ws_CO_1")).toMatchObject({ settlement: "escrow_funded" });
+      expect(store.get("escrows/job1")).toMatchObject({ amount: 900 });
     });
 
     test("keeps the money in the wallet when the job's escrow is already funded", async () => {

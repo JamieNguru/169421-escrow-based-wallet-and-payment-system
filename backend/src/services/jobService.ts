@@ -15,6 +15,11 @@ export interface Job {
   budget: number;
   currency: Currency;
   status: JobStatus;
+  // The accepted quote, set when a worker is chosen. It overrides the budget and can't change.
+  agreedPrice?: number;
+  agreedCurrency?: Currency;
+  // Browse only: the calling worker's own quote on this job, so the page survives a reload.
+  myApplication?: { price?: number; currency?: Currency; message?: string; status: string };
   location?: { label: string; lat?: number; lng?: number };
   // Photos are only returned by getJob; lists carry the count instead.
   photos?: string[];
@@ -78,11 +83,13 @@ export async function listOpenJobs({
   before,
   currency,
   near,
+  workerId,
 }: {
   limit: number;
   before?: Date;
   currency?: Currency;
   near?: { lat: number; lng: number };
+  workerId?: string;
 }): Promise<JobPage> {
   let q = getDb().collection("jobs").where("status", "==", "open");
   if (currency) q = q.where("currency", "==", currency);
@@ -95,6 +102,23 @@ export async function listOpenJobs({
     if (near && lat !== undefined && lng !== undefined) job.distanceKm = distanceKm(near, { lat, lng });
     return job;
   });
+
+  if (workerId) {
+    // Application ids are `${jobId}_${workerId}`, so each lookup is a single read.
+    const mine = await Promise.all(
+      jobs.map((job) => getDb().collection("applications").doc(`${job.id}_${workerId}`).get()),
+    );
+    mine.forEach((snap, i) => {
+      if (!snap.exists) return;
+      const { price, currency: quoted, message, status } = snap.data()!;
+      jobs[i].myApplication = {
+        status,
+        ...(price !== undefined && { price }),
+        ...(quoted && { currency: quoted }),
+        ...(message && { message }),
+      };
+    });
+  }
 
   const nextCursor = jobs.length === limit ? jobs[jobs.length - 1].createdAt.toISOString() : null;
   return { jobs, nextCursor };

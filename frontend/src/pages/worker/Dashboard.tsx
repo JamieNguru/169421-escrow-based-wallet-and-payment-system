@@ -7,7 +7,7 @@ import { Page } from '../../components/AppShell'
 import Icon from '../../components/Icon'
 import { Async, Button, Card, Empty, ErrorNote, Greeting, HeroCard, IconBubble, Label, LinkButton, Money, SectionTitle, Small, TrustBadge } from '../../components/ui'
 import { useAsync } from '../../hooks/useAsync'
-import { firstName, formatMoney } from '../../lib/format'
+import { firstName, formatJobPrice, formatMoney } from '../../lib/format'
 import JobTile from './JobTile'
 
 export default function WorkerDashboard() {
@@ -61,7 +61,7 @@ export default function WorkerDashboard() {
               return (
                 <>
                   <div className="mt-3 text-[17px] font-bold">{current.title}</div>
-                  <Small className="mt-1">{formatMoney(current.budget, current.currency)} is held safely for you</Small>
+                  <Small className="mt-1">{formatJobPrice(current)} is held safely for you</Small>
                   <div className="flex-1" />
                   {current.escrowStatus === 'in_escrow' ? (
                     <Button small icon="check" className="mt-4" disabled={busy} onClick={() => void finish(current.id)}>

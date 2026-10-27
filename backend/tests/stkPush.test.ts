@@ -3,6 +3,7 @@ import request from "supertest";
 import { createApp } from "../src/app";
 import { signToken } from "../src/config/jwt";
 import { resetDarajaTokenCache } from "../src/services/darajaService";
+import { resetRateCache } from "../src/services/exchangeRateService";
 
 // Minimal in-memory stand-in for the Firestore calls the payment service makes.
 const store = new Map<string, Record<string, any>>();
@@ -54,6 +55,15 @@ describe("POST /api/payments/stk-push", () => {
     resetDarajaTokenCache();
     store.clear();
     store.set("workers/worker1", { name: "Wanjiru" });
+    store.set("jobs/job1", {
+      clientId: "client1",
+      workerId: "worker1",
+      status: "assigned",
+      budget: 900,
+      currency: "KES",
+      agreedPrice: 500,
+      agreedCurrency: "KES",
+    });
     store.set("clients/client1", { name: "Kamau", phone: "254712345678" });
 
     fetchMock = jest.spyOn(global, "fetch").mockImplementation(async (url) =>
@@ -86,6 +96,75 @@ describe("POST /api/payments/stk-push", () => {
     });
     expect(res.body.message).toBe(stkSuccess.CustomerMessage);
     expect(store.get("payments/ws_CO_1")).toMatchObject({ status: "pending", amount: 500 });
+  });
+
+  test("records the agreed price so settling can check it later", async () => {
+    await initiate();
+
+    expect(store.get("payments/ws_CO_1")).toMatchObject({ agreedPrice: 500, agreedCurrency: "KES" });
+  });
+
+  test("works out the amount from the job when none is sent", async () => {
+    const res = await initiate({ jobId: "job1", workerId: "worker1", phone: "0708374149" });
+
+    expect(res.status).toBe(202);
+    expect(res.body.payment.amount).toBe(500);
+    expect(JSON.parse((fetchMock.mock.calls[1][1] as any).body).Amount).toBe(500);
+  });
+
+  test("409 when the amount sent is not what the job costs, without calling Daraja", async () => {
+    const res = await initiate({ ...body, amount: 1 });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toContain("KES 500");
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(store.has("payments/ws_CO_1")).toBe(false);
+  });
+
+  test("a job in another currency is converted to whole KES on the server", async () => {
+    process.env.EXCHANGE_RATE_API_URL = "https://rates.test/latest";
+    resetRateCache();
+    store.set("jobs/job1", { ...store.get("jobs/job1"), agreedPrice: 10, agreedCurrency: "USD" });
+    fetchMock.mockImplementation(async (url) => {
+      if (String(url).includes("rates.test")) {
+        return jsonResponse({
+          result: "success",
+          time_last_update_unix: 1790000000,
+          rates: { USD: 1, KES: 129.3, UGX: 3700, TZS: 2500 },
+        });
+      }
+      return String(url).includes("/oauth/")
+        ? jsonResponse({ access_token: "tok", expires_in: "3599" })
+        : jsonResponse(stkSuccess);
+    });
+
+    const res = await initiate({ jobId: "job1", workerId: "worker1", phone: "0708374149" });
+
+    expect(res.status).toBe(202);
+    expect(res.body.payment).toMatchObject({ amount: 1293, agreedPrice: 10, agreedCurrency: "USD" });
+  });
+
+  test("404 for an unknown job", async () => {
+    store.delete("jobs/job1");
+    expect((await initiate()).status).toBe(404);
+  });
+
+  test("403 for a job that belongs to another client", async () => {
+    store.set("jobs/job1", { ...store.get("jobs/job1"), clientId: "client2" });
+    const res = await initiate();
+
+    expect(res.status).toBe(403);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test("409 when the job has no worker yet", async () => {
+    store.set("jobs/job1", { clientId: "client1", status: "open", budget: 900, currency: "KES" });
+    expect((await initiate()).status).toBe(409);
+  });
+
+  test("409 when the worker is not the one assigned", async () => {
+    store.set("workers/worker2", { name: "Otieno" });
+    expect((await initiate({ ...body, workerId: "worker2" })).status).toBe(409);
   });
 
   test("does not touch the escrow, wallet or ledger", async () => {
