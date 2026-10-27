@@ -8,6 +8,7 @@ import AdminKycList from './pages/admin/KycList'
 import Disputes from './pages/admin/Disputes'
 import AdminOverview from './pages/admin/Overview'
 import Payments from './pages/admin/Payments'
+import RefundRequests from './pages/admin/RefundRequests'
 import ResolveDispute from './pages/admin/ResolveDispute'
 import Users from './pages/admin/Users'
 import Login from './pages/auth/Login'
@@ -70,6 +71,7 @@ export default function App() {
           <Route index element={<AdminOverview />} />
           <Route path="disputes" element={<Disputes />} />
           <Route path="disputes/:jobId" element={<ResolveDispute />} />
+          <Route path="refunds" element={<RefundRequests />} />
           <Route path="kyc" element={<AdminKycList />} />
           <Route path="kyc/:workerId" element={<AdminKycDetail />} />
           <Route path="users" element={<Users />} />

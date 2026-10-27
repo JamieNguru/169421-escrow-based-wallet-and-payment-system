@@ -1,7 +1,7 @@
 import { useState } from 'react'
 
 import { adminApi } from '../../api/api'
-import type { AdminUser, Role } from '../../api/types'
+import type { AdminUser, Role, TrustLevel } from '../../api/types'
 import { Page } from '../../components/AppShell'
 import { Async, Button, Chip, ErrorNote, PageHead, Table, Td } from '../../components/ui'
 import { useAsync } from '../../hooks/useAsync'
@@ -13,6 +13,34 @@ const FILTERS: Array<{ id: Role | 'all'; label: string }> = [
   { id: 'worker', label: 'Workers' },
   { id: 'admin', label: 'Admins' },
 ]
+
+const TRUST_TONE: Record<TrustLevel, 'green' | 'amber' | 'red' | 'grey'> ={ High: 'green', Medium: 'amber', Low: 'red', New: 'grey' }
+
+// Trust level on demand: the model runs only when an admin asks for it.
+function TrustCell({ role, id }: { role: 'client' | 'worker'; id: string }) {
+  const [level, setLevel] = useState<TrustLevel>()
+  const [busy, setBusy] = useState(false)
+  const [failed, setFailed] = useState(false)
+
+  const load = async () => {
+    setBusy(true)
+    setFailed(false)
+    try {
+      setLevel((await adminApi.trustScore(role, id)).trustLevel)
+    } catch {
+      setFailed(true)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (level) return <Chip tone={TRUST_TONE[level]}>{level}</Chip>
+  return (
+    <Button small tone="outline" className="h-9 w-[90px]" disabled={busy} onClick={() => void load()}>
+      {busy ? '…' : failed ? 'Retry' : 'Check'}
+    </Button>
+  )
+}
 
 // Browse users and suspend or restore them (wireframe 17).
 export default function Users() {
@@ -69,7 +97,7 @@ export default function Users() {
         {(users) => {
           const visible = users.filter((u) => !needle || `${u.name} ${u.email} ${u.phone ?? ''}`.toLowerCase().includes(needle))
           return (
-            <Table headers={['Name', 'Role', 'Phone', 'Joined', 'Status', '']}>
+            <Table headers={['Name', 'Role', 'Phone', 'Joined', 'Status', 'Trust', '']}>
               {visible.map((u) => (
                 <tr key={`${u.role}-${u.id}`}>
                   <Td>
@@ -82,6 +110,7 @@ export default function Users() {
                   <Td>
                     <Chip tone={u.status === 'active' ? 'green' : 'red'}>{u.status === 'active' ? 'Active' : 'Suspended'}</Chip>
                   </Td>
+                  <Td>{u.role !== 'admin' && <TrustCell role={u.role} id={u.id} />}</Td>
                   <Td>
                     {u.role !== 'admin' && (
                       <Button small tone={u.status === 'active' ? 'danger' : 'outline'} className="h-9 w-[100px]" disabled={busyId === u.id} onClick={() => void toggle(u)}>

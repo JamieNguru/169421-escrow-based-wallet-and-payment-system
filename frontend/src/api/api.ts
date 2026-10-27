@@ -4,6 +4,7 @@ import type {
   AdminKycDetail,
   AdminKycRow,
   AdminPayment,
+  AdminRefundRequest,
   AdminUser,
   Application,
   Conversion,
@@ -97,6 +98,8 @@ export const escrowApi = {
   fund: (input: { jobId: string; workerId: string }) => post('/api/escrow/fund', input),
   refundRequest: (jobId: string, reason: string) =>
     post(`/api/escrow/${jobId}/refund-request`, { reason }),
+  // Admin approves a pending refund request; the escrowed money goes back to the client.
+  processRefund: (jobId: string) => post(`/api/escrow/${jobId}/process-refund`),
   dispute: (jobId: string, reason: string, photos?: string[]) =>
     post(`/api/escrow/${jobId}/dispute`, { reason, ...(photos?.length ? { photos } : {}) }),
   resolveDispute: (
@@ -152,6 +155,14 @@ export const adminApi = {
   // One dispute with its evidence photos.
   dispute: (jobId: string) =>
     get<{ dispute: AdminDispute }>(`/api/admin/disputes/${jobId}`).then((r) => r.dispute),
+  refundRequests: (status?: 'pending' | 'approved') =>
+    get<{ refundRequests: AdminRefundRequest[]; nextCursor: string | null }>(
+      '/api/admin/refund-requests',
+      { status, limit: 50 },
+    ).then((r) => r.refundRequests),
+  // Any client's or worker's trust level, for the user list.
+  trustScore: (role: 'client' | 'worker', userId: string) =>
+    get<TrustScore>(`/api/trust-score/${userId}`, { role }),
   // Workers who are party to a dispute: the only ones whose KYC an admin can open.
   kycList: () => get<{ workers: AdminKycRow[] }>('/api/admin/kyc').then((r) => r.workers),
   // Full record and photos; every call is written to the access log.

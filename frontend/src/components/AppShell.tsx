@@ -36,6 +36,7 @@ const NAV: Record<Role, NavItem[]> = {
   admin: [
     { to: '/admin', icon: 'home', label: 'Overview', end: true },
     { to: '/admin/disputes', icon: 'flag', label: 'Disputes' },
+    { to: '/admin/refunds', icon: 'history', label: 'Refunds' },
     { to: '/admin/kyc', icon: 'lock', label: 'Worker KYC' },
     { to: '/admin/users', icon: 'users', label: 'Users' },
     { to: '/admin/payments', icon: 'wallet', label: 'Payments' },

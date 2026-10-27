@@ -48,6 +48,12 @@ export const listDisputesQuerySchema = z.object({
   cursor: cursorSchema.optional(),
 });
 
+export const listRefundRequestsQuerySchema = z.object({
+  status: z.enum(["pending", "approved"], { error: "status must be pending or approved" }).optional(),
+  limit: limitSchema,
+  cursor: cursorSchema.optional(),
+});
+
 export const listPaymentsQuerySchema = z.object({
   status: z.enum(["pending", "completed", "failed"], { error: "status must be pending, completed or failed" }).optional(),
   limit: limitSchema,
