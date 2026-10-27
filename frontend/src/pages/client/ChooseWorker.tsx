@@ -4,6 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { jobsApi } from '../../api/api'
 import type { Application, Job, TrustLevel } from '../../api/types'
 import { Page } from '../../components/AppShell'
+import { KycDetails, VerifiedBadge } from '../../components/KycSummary'
 import { Async, Banner, Button, Card, Chip, Empty, ErrorNote, PageHead, Select, Small, TrustBadge } from '../../components/ui'
 import { useAsync } from '../../hooks/useAsync'
 import { formatMoney } from '../../lib/format'
@@ -27,6 +28,7 @@ export default function ChooseWorker() {
   const applicants = useAsync(() => jobsApi.applications(jobId))
   const [sortBy, setSortBy] = useState<SortBy>('price')
   const [confirmId, setConfirmId] = useState<string | null>(null)
+  const [viewKycId, setViewKycId] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -89,7 +91,10 @@ export default function ChooseWorker() {
                           {a.worker.name.slice(0, 1)}
                         </div>
                         <div>
-                          <div className="text-[17px] font-bold">{a.worker.name}</div>
+                          <div className="flex flex-wrap items-center gap-2 text-[17px] font-bold">
+                            {a.worker.name}
+                            {a.worker.kyc && <VerifiedBadge />}
+                          </div>
                           <Small className="mt-0.5">{a.message || 'No message'}</Small>
                         </div>
                       </div>
@@ -114,6 +119,19 @@ export default function ChooseWorker() {
                         </Button>
                       </div>
                     </div>
+                    {a.worker.kyc && (
+                      <div className="border-t border-line pt-3">
+                        <button
+                          type="button"
+                          aria-expanded={viewKycId === a.workerId}
+                          onClick={() => setViewKycId(viewKycId === a.workerId ? null : a.workerId)}
+                          className="text-sm font-bold text-brand-ink"
+                        >
+                          {viewKycId === a.workerId ? 'Hide verification' : 'View verification'}
+                        </button>
+                        {viewKycId === a.workerId && <div className="mt-2"><KycDetails kyc={a.worker.kyc} /></div>}
+                      </div>
+                    )}
                     {confirming && (
                       <div className="flex flex-col gap-3 border-t border-line pt-3.5">
                         <Small>

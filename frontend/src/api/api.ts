@@ -1,6 +1,8 @@
 import { get, patch, post } from './http'
 import type {
   AdminDispute,
+  AdminKycDetail,
+  AdminKycRow,
   AdminPayment,
   AdminUser,
   Application,
@@ -9,6 +11,8 @@ import type {
   Escrow,
   Job,
   JobLocation,
+  KycInput,
+  MyKyc,
   MyApplication,
   MyJob,
   Payment,
@@ -121,6 +125,12 @@ export const transactionsApi = {
     }),
 }
 
+export const kycApi = {
+  // null until the worker has submitted something.
+  me: () => get<{ kyc: MyKyc | null }>('/api/kyc/me').then((r) => r.kyc),
+  submit: (input: KycInput) => post<{ kyc: MyKyc }>('/api/kyc', input).then((r) => r.kyc),
+}
+
 export const trustApi = {
   me: () => get<TrustScore>('/api/trust-score/me'),
 }
@@ -135,6 +145,11 @@ export const adminApi = {
   // One dispute with its evidence photos.
   dispute: (jobId: string) =>
     get<{ dispute: AdminDispute }>(`/api/admin/disputes/${jobId}`).then((r) => r.dispute),
+  // Workers who are party to a dispute: the only ones whose KYC an admin can open.
+  kycList: () => get<{ workers: AdminKycRow[] }>('/api/admin/kyc').then((r) => r.workers),
+  // Full record and photos; every call is written to the access log.
+  kyc: (workerId: string) =>
+    get<{ kyc: AdminKycDetail }>(`/api/admin/kyc/${workerId}`).then((r) => r.kyc),
   payments: (status?: string) =>
     get<{ payments: AdminPayment[]; nextCursor: string | null }>('/api/admin/payments', {
       status,
