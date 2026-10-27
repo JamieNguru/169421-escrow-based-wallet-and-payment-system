@@ -5,6 +5,11 @@ import { signToken } from "../src/config/jwt";
 import { resetDarajaTokenCache } from "../src/services/darajaService";
 import { resetRateCache } from "../src/services/exchangeRateService";
 
+// The terms gate has its own tests (requireTerms.test.ts); let requests through here.
+jest.mock("../src/middleware/requireTerms", () => ({
+  requireTerms: (_req: unknown, _res: unknown, next: () => void) => next(),
+}));
+
 // Minimal in-memory stand-in for the Firestore calls the payment service makes.
 const store = new Map<string, Record<string, any>>();
 

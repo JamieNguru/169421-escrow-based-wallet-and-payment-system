@@ -12,6 +12,7 @@ import ResolveDispute from './pages/admin/ResolveDispute'
 import Users from './pages/admin/Users'
 import Login from './pages/auth/Login'
 import Register from './pages/auth/Register'
+import Terms from './pages/Terms'
 import ChooseWorker from './pages/client/ChooseWorker'
 import ClientDashboard from './pages/client/Dashboard'
 import PayEscrow from './pages/client/PayEscrow'
@@ -37,6 +38,7 @@ export default function App() {
       <Route path="/" element={<Home />} />
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
+      <Route path="/terms" element={<Terms />} />
 
       <Route element={<RequireRole role="client" />}>
         <Route path="/client" element={<AppShell role="client" />}>

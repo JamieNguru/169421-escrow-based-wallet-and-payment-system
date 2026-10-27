@@ -2,6 +2,7 @@ import { RequestHandler, Router } from "express";
 
 import { HttpError } from "../errors";
 import { authenticate, requireRole } from "../middleware/auth";
+import { requireTerms } from "../middleware/requireTerms";
 import { getB2CCallbackSecret, getStkCallbackSecret } from "../config/daraja";
 import {
   getPayment,
@@ -15,7 +16,7 @@ import { initiateStkSchema, simulateSchema, topUpSchema, withdrawSchema } from "
 
 const router = Router();
 
-router.post("/stk-push", authenticate, requireRole("client"), async (req, res, next) => {
+router.post("/stk-push", authenticate, requireRole("client"), requireTerms, async (req, res, next) => {
   const parsed = initiateStkSchema.safeParse(req.body);
   if (!parsed.success) {
     const message = parsed.error.issues.map((issue) => issue.message).join("; ");
@@ -31,7 +32,7 @@ router.post("/stk-push", authenticate, requireRole("client"), async (req, res, n
 });
 
 // Adds money to the wallet with an M-Pesa prompt, with no job involved.
-router.post("/top-up", authenticate, requireRole("client"), async (req, res, next) => {
+router.post("/top-up", authenticate, requireRole("client"), requireTerms, async (req, res, next) => {
   const parsed = topUpSchema.safeParse(req.body);
   if (!parsed.success) {
     const message = parsed.error.issues.map((issue) => issue.message).join("; ");
@@ -46,7 +47,7 @@ router.post("/top-up", authenticate, requireRole("client"), async (req, res, nex
   }
 });
 
-router.post("/withdraw", authenticate, requireRole("worker"), async (req, res, next) => {
+router.post("/withdraw", authenticate, requireRole("worker"), requireTerms, async (req, res, next) => {
   const parsed = withdrawSchema.safeParse(req.body);
   if (!parsed.success) {
     const message = parsed.error.issues.map((issue) => issue.message).join("; ");

@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 
 import { getDb } from "../config/firebase";
+import { CURRENT_TERMS_VERSION } from "../config/terms";
 import { HttpError } from "../errors";
 import type { ListUsersQuery, SetUserStatusInput } from "../validation/admin";
 import type { LoginInput } from "../validation/login";
@@ -17,6 +18,7 @@ export interface NewUser {
   phone?: string;
   password: string;
   role: Role;
+  acceptTerms?: boolean;
 }
 
 export interface RegisteredUser {
@@ -26,6 +28,7 @@ export interface RegisteredUser {
   phone?: string;
   role: Role;
   walletId?: string;
+  termsAccepted?: boolean;
 }
 
 // Each role lives in its own collection, so email and phone uniqueness are
@@ -57,6 +60,7 @@ export async function createUser(input: NewUser): Promise<RegisteredUser> {
       email: input.email,
       ...(input.phone && { phone: input.phone }),
       passwordHash,
+      ...(input.acceptTerms && { termsVersion: CURRENT_TERMS_VERSION, termsAcceptedAt: new Date() }),
       createdAt: new Date(),
     });
     if (walletRef) {
@@ -78,6 +82,7 @@ export async function createUser(input: NewUser): Promise<RegisteredUser> {
     ...(input.phone && { phone: input.phone }),
     role: input.role,
     ...(walletRef && { walletId: walletRef.id }),
+    ...(input.acceptTerms && { termsAccepted: true }),
   };
 }
 
@@ -118,7 +123,23 @@ export async function authenticateUser(input: LoginInput): Promise<RegisteredUse
     email: user.email,
     ...(user.phone && { phone: user.phone }),
     role,
+    // Admins don't sign the terms; a missing version means not yet accepted.
+    termsAccepted: role === "admin" || user.termsVersion === CURRENT_TERMS_VERSION,
   };
+}
+
+export async function hasAcceptedTerms(role: Role, id: string): Promise<boolean> {
+  const doc = await getDb().collection(COLLECTIONS[role]).doc(id).get();
+  return doc.data()?.termsVersion === CURRENT_TERMS_VERSION;
+}
+
+export async function acceptTerms(role: Role, id: string): Promise<{ termsAccepted: true; termsVersion: string }> {
+  if (role === "admin") {
+    throw new HttpError(403, "Admin accounts do not accept the terms");
+  }
+  const { ref } = await loadUser(role, id);
+  await ref.update({ termsVersion: CURRENT_TERMS_VERSION, termsAcceptedAt: new Date() });
+  return { termsAccepted: true, termsVersion: CURRENT_TERMS_VERSION };
 }
 
 export type UserStatus = "active" | "suspended";

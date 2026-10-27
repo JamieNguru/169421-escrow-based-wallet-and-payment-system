@@ -2,7 +2,8 @@ import { Router } from "express";
 
 import { signToken } from "../config/jwt";
 import { HttpError } from "../errors";
-import { authenticateUser, registerUser } from "../services/userService";
+import { authenticate } from "../middleware/auth";
+import { acceptTerms, authenticateUser, registerUser } from "../services/userService";
 import { loginSchema } from "../validation/login";
 import { registerSchema } from "../validation/register";
 
@@ -32,6 +33,15 @@ router.post("/login", async (req, res, next) => {
   try {
     const user = await authenticateUser(parsed.data);
     res.json({ token: signToken({ sub: user.id, role: user.role }), user });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/accept-terms", authenticate, async (req, res, next) => {
+  try {
+    const { sub, role } = req.user!;
+    res.json(await acceptTerms(role, sub));
   } catch (err) {
     next(err);
   }

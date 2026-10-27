@@ -11,6 +11,7 @@ import paymentsRouter from "./routes/payments";
 import transactionsRouter from "./routes/transactions";
 import trustScoreRouter from "./routes/trustScore";
 import walletRouter from "./routes/wallet";
+import { CURRENT_TERMS_VERSION, TERMS_PATH } from "./config/terms";
 import { errorHandler, notFound } from "./middleware/errorHandler";
 
 export function createApp(): Express {
@@ -21,6 +22,9 @@ export function createApp(): Express {
   app.use(express.json({ limit: "2mb" }));
 
   app.use("/api/health", healthRouter);
+  app.get("/api/terms", (_req, res) => {
+    res.json({ version: CURRENT_TERMS_VERSION, url: TERMS_PATH });
+  });
   app.use("/api/auth", authRouter);
   app.use("/api/admin", adminRouter);
   app.use("/api/trust-score", trustScoreRouter);

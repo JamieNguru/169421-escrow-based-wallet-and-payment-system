@@ -4,6 +4,11 @@ import { createApp } from "../src/app";
 import { signToken } from "../src/config/jwt";
 import { distanceKm } from "../src/services/jobService";
 
+// The terms gate has its own tests (requireTerms.test.ts); let requests through here.
+jest.mock("../src/middleware/requireTerms", () => ({
+  requireTerms: (_req: unknown, _res: unknown, next: () => void) => next(),
+}));
+
 // In-memory stand-in for the Firestore calls the job endpoints make.
 const store = new Map<string, Record<string, any>>();
 let nextId = 1;

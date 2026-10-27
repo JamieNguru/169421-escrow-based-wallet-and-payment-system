@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import request from "supertest";
 
 import { createApp } from "../src/app";
+import { CURRENT_TERMS_VERSION } from "../src/config/terms";
 import { createUser } from "../src/services/userService";
 
 // Minimal in-memory stand-in for the Firestore calls registerUser makes.
@@ -30,6 +31,7 @@ const valid = {
   phone: "0712345678",
   password: "supersecret",
   role: "client",
+  acceptTerms: true,
 };
 
 describe("POST /api/auth/register", () => {
@@ -51,8 +53,31 @@ describe("POST /api/auth/register", () => {
       phone: "254712345678",
       role: "client",
       walletId: "id2",
+      termsAccepted: true,
     });
     expect(JSON.stringify(res.body)).not.toMatch(/password/i);
+  });
+
+  test.each([
+    ["missing", undefined],
+    ["false", false],
+    ["a string", "true"],
+  ])("rejects registration when acceptTerms is %s", async (_label, acceptTerms) => {
+    const res = await request(app).post("/api/auth/register").send({ ...valid, acceptTerms });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/terms of service/i);
+    expect(store.size).toBe(0);
+  });
+
+  test.each([
+    ["client", "clients/id1"],
+    ["worker", "workers/id1"],
+  ])("records the terms version and time for a %s", async (role, path) => {
+    await request(app).post("/api/auth/register").send({ ...valid, role });
+
+    expect(store.get(path)).toMatchObject({ termsVersion: CURRENT_TERMS_VERSION });
+    expect(store.get(path)?.termsAcceptedAt).toBeInstanceOf(Date);
   });
 
   test.each(["client", "worker"])("creates a zeroed KES wallet for a %s", async (role) => {

@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { NavLink, Outlet } from 'react-router-dom'
+import { Link, NavLink, Outlet } from 'react-router-dom'
 
 import type { Role } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { BrandMark, BrandName } from './Brand'
 import Icon from './Icon'
+import { Button } from './ui'
 import type { IconName } from './Icon'
 import ThemeToggle from './ThemeToggle'
 
@@ -99,9 +100,47 @@ export default function AppShell({ role }: { role: Role }) {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
+        <TermsPrompt />
         <Outlet />
         <MobileNav role={role} />
       </div>
+    </div>
+  )
+}
+
+// Asks users who haven't accepted the current terms to do so; until they do
+// the server refuses jobs, escrow funding, payments and disputes.
+function TermsPrompt() {
+  const { user, acceptTerms } = useAuth()
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  if (!user || user.role === 'admin' || user.termsAccepted !== false) return null
+
+  const accept = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      await acceptTerms()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not record your acceptance')
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3 border-b border-warn/30 bg-warn-tint px-5 py-3.5 text-warn md:flex-row md:items-center md:justify-between md:px-8">
+      <div className="text-[15px] leading-snug">
+        <span className="font-bold">Please accept our terms of service.</span> Until you do, you can’t post jobs, pay
+        into escrow, withdraw or raise a dispute.{' '}
+        <Link to="/terms" target="_blank" className="font-bold underline">
+          Read the terms
+        </Link>
+        {error && <span className="ml-2 font-semibold text-danger">{error}</span>}
+      </div>
+      <Button tone="primary" small className="w-[160px] shrink-0" onClick={accept} disabled={busy}>
+        {busy ? 'Saving…' : 'I accept'}
+      </Button>
     </div>
   )
 }

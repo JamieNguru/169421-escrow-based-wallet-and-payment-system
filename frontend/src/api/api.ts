@@ -35,7 +35,14 @@ export const authApi = {
     phone: string
     password: string
     role: 'client' | 'worker'
+    acceptTerms: boolean
   }) => post<User>('/api/auth/register', input),
+  acceptTerms: () =>
+    post<{ termsAccepted: true; termsVersion: string }>('/api/auth/accept-terms', {}),
+}
+
+export const termsApi = {
+  current: () => get<{ version: string; url: string }>('/api/terms'),
 }
 
 export const walletApi = {
