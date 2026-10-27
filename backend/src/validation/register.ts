@@ -20,6 +20,7 @@ export const registerSchema = z.object({
     }),
   password: z.string().min(8, "password must be at least 8 characters"),
   role: z.enum(["client", "worker"], { error: "role must be client or worker" }),
+  acceptTerms: z.literal(true, { error: "You must accept the terms of service" }),
 });
 
 export type RegisterInput = z.infer<typeof registerSchema>;

@@ -16,6 +16,7 @@ interface AuthValue {
   user: User | null
   login: (identifier: string, password: string) => Promise<User>
   logout: () => void
+  acceptTerms: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthValue | null>(null)
@@ -50,12 +51,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return next.user
   }, [])
 
+  const acceptTerms = useCallback(async () => {
+    await authApi.acceptTerms()
+    setSession((current) => {
+      if (!current) return current
+      const next = { ...current, user: { ...current.user, termsAccepted: true } }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+      return next
+    })
+  }, [])
+
   useEffect(() => {
     setUnauthorizedHandler(logout)
     return () => setUnauthorizedHandler(null)
   }, [logout])
 
-  const value = useMemo(() => ({ user: session?.user ?? null, login, logout }), [session, login, logout])
+  const value = useMemo(() => ({ user: session?.user ?? null, login, logout, acceptTerms }), [session, login, logout, acceptTerms])
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 

@@ -21,6 +21,7 @@ export default function Register() {
   const [role, setRole] = useState<SignupRole>('client')
   const [form, setForm] = useState({ name: '', email: '', phone: '', password: '' })
   const [error, setError] = useState<string | null>(null)
+  const [accepted, setAccepted] = useState(false)
   const [busy, setBusy] = useState(false)
 
   if (user) return <Navigate to={homePathFor(user.role)} replace />
@@ -33,7 +34,7 @@ export default function Register() {
     setBusy(true)
     setError(null)
     try {
-      await authApi.register({ ...form, role })
+      await authApi.register({ ...form, role, acceptTerms: accepted })
       const signedIn = await login(form.email, form.password)
       navigate(homePathFor(signedIn.role), { replace: true })
     } catch (err) {
@@ -79,8 +80,24 @@ export default function Register() {
           <Field label="Email" type="email" required value={form.email} onChange={set('email')} autoComplete="email" />
           <Field label="Password" type="password" required minLength={8} value={form.password} onChange={set('password')} hint="At least 8 characters" autoComplete="new-password" />
         </div>
+        <label className="flex items-start gap-3 text-sm leading-snug text-neutral-700">
+          <input
+            type="checkbox"
+            required
+            checked={accepted}
+            onChange={(e) => setAccepted(e.target.checked)}
+            className="mt-0.5 h-5 w-5 shrink-0 accent-brand"
+          />
+          <span>
+            I agree to the{' '}
+            <Link to="/terms" target="_blank" className="font-bold text-brand-ink underline">
+              terms of service
+            </Link>
+            , including how disputes over escrowed funds are decided.
+          </span>
+        </label>
         {error && <ErrorNote message={error} />}
-        <Button type="submit" tone="primary" disabled={busy}>
+        <Button type="submit" tone="primary" disabled={busy || !accepted}>
           {busy ? 'Creating account…' : 'Create account'}
         </Button>
       </form>

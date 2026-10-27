@@ -2,6 +2,7 @@ import { Router } from "express";
 
 import { HttpError } from "../errors";
 import { authenticate, requireRole } from "../middleware/auth";
+import { requireTerms } from "../middleware/requireTerms";
 import {
   confirmCompletion,
   fundEscrow,
@@ -21,7 +22,7 @@ import {
 
 const router = Router();
 
-router.post("/fund", authenticate, requireRole("client"), async (req, res, next) => {
+router.post("/fund", authenticate, requireRole("client"), requireTerms, async (req, res, next) => {
   const parsed = fundEscrowSchema.safeParse(req.body);
   if (!parsed.success) {
     const message = parsed.error.issues.map((issue) => issue.message).join("; ");
@@ -78,7 +79,7 @@ router.post("/:jobId/process-refund", authenticate, requireRole("admin"), async 
   }
 });
 
-router.post("/:jobId/dispute",authenticate, requireRole("client", "worker"), async (req, res, next) => {
+router.post("/:jobId/dispute", authenticate, requireRole("client", "worker"), requireTerms, async (req, res, next) => {
   const parsed = raiseDisputeSchema.safeParse(req.body);
   if (!parsed.success) {
     const message = parsed.error.issues.map((issue) => issue.message).join("; ");

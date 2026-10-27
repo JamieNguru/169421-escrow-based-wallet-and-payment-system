@@ -10,6 +10,8 @@ export interface User {
   phone?: string
   role: Role
   walletId?: string
+  // False when the user hasn't accepted the current terms of service.
+  termsAccepted?: boolean
 }
 
 export interface Wallet {

@@ -3,6 +3,7 @@ import request from "supertest";
 
 import { createApp } from "../src/app";
 import { verifyToken } from "../src/config/jwt";
+import { CURRENT_TERMS_VERSION } from "../src/config/terms";
 
 // In-memory stand-in for the Firestore calls the auth service makes.
 const store = new Map<string, Record<string, any>>();
@@ -34,6 +35,8 @@ function seed(role: "client" | "worker" | "admin", id: string, email: string) {
     email,
     phone: "254712345678",
     passwordHash: bcrypt.hashSync(password, 4),
+    // Workers are seeded as existing users who never accepted the terms.
+    ...(role === "client" && { termsVersion: CURRENT_TERMS_VERSION }),
   });
 }
 
@@ -49,14 +52,14 @@ describe("POST /api/auth/login", () => {
   });
 
   test.each([
-    ["client", "jane@example.com", "c1"],
-    ["worker", "joe@example.com", "w1"],
-    ["admin", "root@example.com", "a1"],
-  ])("logs in a %s and returns a token for them", async (role, email, id) => {
+    ["client", "jane@example.com", "c1", true],
+    ["worker", "joe@example.com", "w1", false],
+    ["admin", "root@example.com", "a1", true],
+  ])("logs in a %s and returns a token for them", async (role, email, id, termsAccepted) => {
     const res = await request(app).post("/api/auth/login").send({ email, password });
 
     expect(res.status).toBe(200);
-    expect(res.body.user).toEqual({ id, name: "Jane Doe", email, phone: "254712345678", role });
+    expect(res.body.user).toEqual({ id, name: "Jane Doe", email, phone: "254712345678", role, termsAccepted });
     expect(verifyToken(res.body.token)).toMatchObject({ sub: id, role });
     expect(JSON.stringify(res.body)).not.toMatch(/passwordHash/i);
   });

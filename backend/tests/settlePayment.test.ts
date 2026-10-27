@@ -3,6 +3,11 @@ import request from "supertest";
 import { createApp } from "../src/app";
 import { signToken } from "../src/config/jwt";
 
+// The terms gate has its own tests (requireTerms.test.ts); let requests through here.
+jest.mock("../src/middleware/requireTerms", () => ({
+  requireTerms: (_req: unknown, _res: unknown, next: () => void) => next(),
+}));
+
 // In-memory stand-in for the Firestore calls the payment service makes,
 // including transactions (writes apply only if the callback finishes).
 const store = new Map<string, Record<string, any>>();

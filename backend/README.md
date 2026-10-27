@@ -18,19 +18,32 @@ Create a Firebase project, enable Firestore, then download a service account key
 `POST /api/auth/register` creates a client or worker account.
 
 ```
-{ "name": "Jane Doe", "email": "jane@example.com", "phone": "0712345678", "password": "at-least-8-chars", "role": "client" }
+{ "name": "Jane Doe", "email": "jane@example.com", "phone": "0712345678", "password": "at-least-8-chars", "role": "client", "acceptTerms": true }
 ```
 
 - `role` is `client` or `worker`; admins cannot self-register.
+- `acceptTerms` must be `true`, otherwise `400`. See [Terms of service](#terms-of-service).
 - `phone` accepts `07xx`, `01xx`, `+254...` or `254...` and is stored as `254XXXXXXXXX`.
-- Returns `201` with `{ id, name, email, phone, role }`, `400` for invalid input, `409` if the email or phone number is taken.
+- Returns `201` with `{ id, name, email, phone, role, termsAccepted }`, `400` for invalid input, `409` if the email or phone number is taken.
 - Users are stored in the `clients` or `workers` collection with a bcrypt `passwordHash`. `emails/{email}` and `phones/{phone}` docs enforce uniqueness across both roles and are how login finds a user.
 
 `POST /api/auth/login` takes `{ "identifier", "password" }`, where `identifier` is an email or a Kenyan mobile number (`0712345678`, `+254712345678`, ...), and returns `{ token, user }`. `email` is still accepted as the field name. The token is a JWT (HS256) with `sub` (user id) and `role`, valid for `JWT_EXPIRES_IN` (default `1d`) and signed with `JWT_SECRET`. Send it as `Authorization: Bearer <token>`. A wrong email, phone or password, or an unknown email or phone, returns the same `401`, and invalid input returns `400`. Admins sign in the same way.
 
+The login `user` includes `termsAccepted`, which is `false` when the user has not accepted the current terms version.
+
 Accounts created before phone login have no `phones/{phone}` entry, so run `npm run backfill:phones` once to add them (a phone shared by two accounts is reported and left alone).
 
 Admins cannot self-register. Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` in `.env` and run `npm run seed:admin` to create one in the `admins` collection.
+
+## Terms of service
+
+The terms (including the dispute clause) are shown by the frontend at `/terms`. `src/config/terms.ts` holds the current version (`CURRENT_TERMS_VERSION`, e.g. `2026-10-v1`); bump it when the terms change and every user is asked to accept again.
+
+- `GET /api/terms` returns `{ version, url }`.
+- Registration stores `termsVersion` and `termsAcceptedAt` on the client or worker document.
+- `POST /api/auth/accept-terms` (any signed-in client or worker, no body) records acceptance of the current version and returns `{ termsAccepted: true, termsVersion }`. Admins get `403`.
+- Users with no stored version (accounts created before this feature) or an older one get `termsAccepted: false` at login. They can still sign in and browse, but `POST /api/jobs`, `POST /api/escrow/fund`, `POST /api/escrow/:jobId/dispute`, `POST /api/payments/stk-push`, `/top-up` and `/withdraw` return `403` until they accept. Admins are exempt.
+- The wording needs a legal or supervisor review before launch.
 
 ## Authorization
 

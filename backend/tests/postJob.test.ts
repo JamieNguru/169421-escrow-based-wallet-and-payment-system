@@ -3,6 +3,11 @@ import request from "supertest";
 import { createApp } from "../src/app";
 import { signToken } from "../src/config/jwt";
 
+// The terms gate has its own tests (requireTerms.test.ts); let requests through here.
+jest.mock("../src/middleware/requireTerms", () => ({
+  requireTerms: (_req: unknown, _res: unknown, next: () => void) => next(),
+}));
+
 // Minimal in-memory stand-in for the Firestore calls postJob makes.
 const store = new Map<string, Record<string, any>>();
 let nextId = 1;
