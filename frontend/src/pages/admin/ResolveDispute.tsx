@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { adminApi, escrowApi } from '../../api/api'
 import type { AdminDispute } from '../../api/types'
 import { Page } from '../../components/AppShell'
+import { KycDetails, NotVerified, VerifiedBadge } from '../../components/KycSummary'
 import { PhotoGallery } from '../../components/Photos'
 import { Async, Button, Card, ErrorNote, Field, Label, PageHead, Small, TextArea } from '../../components/ui'
 import { useAsync } from '../../hooks/useAsync'
@@ -79,6 +80,17 @@ export default function ResolveDispute() {
                   {d.raisedByRole === 'client' ? d.workerName : d.clientName} has not been asked to reply in the app yet.
                   Contact them by phone or email before you decide.
                 </Small>
+              </Card>
+
+              <Card className="gap-2.5 md:col-span-3">
+                <div className="flex items-center justify-between gap-2">
+                  <Label>Worker verification</Label>
+                  {d.workerKyc ? <VerifiedBadge /> : <NotVerified />}
+                </div>
+                {d.workerKyc && <KycDetails kyc={d.workerKyc} />}
+                <Link to={`/admin/kyc/${d.workerId}`} className="text-sm font-bold text-brand-ink hover:underline">
+                  Open full verification (this view is logged)
+                </Link>
               </Card>
 
               <Card className="gap-3.5 md:col-span-2">

@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 
-import { jobsApi } from '../../api/api'
+import { jobsApi, kycApi } from '../../api/api'
 import type { Currency, Job } from '../../api/types'
 import { Page } from '../../components/AppShell'
 import Icon from '../../components/Icon'
 import { Button, Chip, Empty, ErrorNote, Loading, PageHead } from '../../components/ui'
+import { useAsync } from '../../hooks/useAsync'
 import { getPosition } from '../../lib/geo'
 import type { Position } from '../../lib/geo'
 import JobTile from './JobTile'
@@ -14,6 +15,7 @@ const CURRENCIES: Array<Currency | 'All'> = ['All', 'KES', 'UGX', 'TZS', 'USD']
 // Browse open jobs (wireframe 11). Search is client-side over the loaded pages;
 // the API filters by currency only. Sharing a position adds each job's distance.
 export default function FindJobs() {
+  const kyc = useAsync(kycApi.me)
   const [jobs, setJobs] = useState<Job[]>([])
   const [cursor, setCursor] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -105,7 +107,7 @@ export default function FindJobs() {
       {!error && !loading && visible.length === 0 && <Empty>No jobs match. Try another search.</Empty>}
       <div className="grid gap-5 md:grid-cols-3">
         {visible.map((job) => (
-          <JobTile key={job.id} job={job} />
+          <JobTile key={job.id} job={job} verified={kyc.data?.status === 'verified'} />
         ))}
       </div>
       {loading && <Loading />}

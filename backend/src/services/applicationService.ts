@@ -4,6 +4,7 @@ import type { ApplyToJobInput, UpdateQuoteInput } from "../validation/applicatio
 import type { Currency } from "../validation/currency";
 import { toDate } from "./escrowService";
 import type { Job } from "./jobService";
+import { toSummary, type KycSummary } from "./kycService";
 import { getTrustScore } from "./trustScoreService";
 
 export type ApplicationStatus = "pending" | "selected" | "rejected";
@@ -30,19 +31,24 @@ export async function applyToJob(
   const db = getDb();
   const jobRef = db.collection("jobs").doc(jobId);
   const workerRef = db.collection("workers").doc(workerId);
+  const kycRef = db.collection("kyc").doc(workerId);
   const id = `${jobId}_${workerId}`;
   const applicationRef = db.collection("applications").doc(id);
 
   return db.runTransaction(async (tx) => {
-    const [job, worker, existing] = await Promise.all([
+    const [job, worker, kyc, existing] = await Promise.all([
       tx.get(jobRef),
       tx.get(workerRef),
+      tx.get(kycRef),
       tx.get(applicationRef),
     ]);
 
     if (!job.exists) throw new HttpError(404, "Job not found");
     if (job.data()!.status !== "open") throw new HttpError(409, "Job is not open for applications");
     if (!worker.exists) throw new HttpError(404, "Worker not found");
+    if (!kyc.exists || kyc.data()!.status !== "verified") {
+      throw new HttpError(403, "Verify your identity before applying to jobs");
+    }
     if (existing.exists) throw new HttpError(409, "You have already applied to this job");
 
     const data = {
@@ -151,7 +157,7 @@ export async function selectWorker(
 
 export interface ApplicationWithWorker extends Application {
   // trustLevel is left out when the scoring service can't be reached.
-  worker: { id: string; name: string; email: string; trustLevel?: string };
+  worker: { id: string; name: string; email: string; trustLevel?: string; kyc: KycSummary | null };
 }
 
 const TRUST_TTL_MS = 5 * 60 * 1000;
@@ -214,12 +220,21 @@ export async function listJobApplications(
   const applications: ApplicationWithWorker[] = await Promise.all(
     snapshot.docs.map(async (doc) => {
       const data = doc.data();
-      const worker = await db.collection("workers").doc(data.workerId).get();
+      const [worker, kyc] = await Promise.all([
+        db.collection("workers").doc(data.workerId).get(),
+        db.collection("kyc").doc(data.workerId).get(),
+      ]);
       return {
         ...(data as Application),
         id: doc.id,
         createdAt: toDate(data.createdAt),
-        worker: { id: data.workerId, name: worker.data()?.name, email: worker.data()?.email },
+        // The summary is the only KYC data a client gets: no photos, no full number.
+        worker: {
+          id: data.workerId,
+          name: worker.data()?.name,
+          email: worker.data()?.email,
+          kyc: toSummary(kyc.exists ? kyc.data() : undefined),
+        },
       };
     }),
   );

@@ -5,13 +5,13 @@ import { ApiError } from '../../api/http'
 import type { Job, MyApplication } from '../../api/types'
 import Icon from '../../components/Icon'
 import { PhotoGallery } from '../../components/Photos'
-import { Button, Card, ErrorNote, Field, Small, TextArea } from '../../components/ui'
+import { Button, Card, ErrorNote, Field, LinkButton, Small, TextArea } from '../../components/ui'
 import { formatDate, formatMoney } from '../../lib/format'
 
 // An open job where the worker sends a quote (wireframes 10 and 11). The
 // client's budget is only a guide: the price the worker sends is the one that
 // is locked in if they are chosen. A quote sent earlier comes back with the job.
-export default function JobTile({ job }: { job: Job }) {
+export default function JobTile({ job, verified }: { job: Job; verified: boolean }) {
   const [quote, setQuote] = useState<MyApplication | undefined>(job.myApplication)
   const [editing, setEditing] = useState(false)
   const [price, setPrice] = useState('')
@@ -122,8 +122,10 @@ export default function JobTile({ job }: { job: Job }) {
             <Button small className="w-auto px-4" onClick={openPanel}>Edit quote</Button>
           )}
         </div>
-      ) : (
+      ) : verified ? (
         <Button small tone="primary" className="mt-3.5" onClick={openPanel}>Send your quote</Button>
+      ) : (
+        <LinkButton to="/worker/verification" small icon="lock" className="mt-3.5">Verify your identity to apply</LinkButton>
       )}
     </Card>
   )

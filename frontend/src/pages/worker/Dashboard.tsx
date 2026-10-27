@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
-import { escrowApi, jobsApi, trustApi, walletApi } from '../../api/api'
+import { escrowApi, jobsApi, kycApi, trustApi, walletApi } from '../../api/api'
 import { useAuth } from '../../auth/AuthContext'
 import { Page } from '../../components/AppShell'
 import Icon from '../../components/Icon'
@@ -9,12 +9,14 @@ import { Async, Button, Card, Empty, ErrorNote, Greeting, HeroCard, IconBubble, 
 import { useAsync } from '../../hooks/useAsync'
 import { firstName, formatJobPrice, formatMoney } from '../../lib/format'
 import JobTile from './JobTile'
+import KycCard from './KycCard'
 
 export default function WorkerDashboard() {
   const { user } = useAuth()
   const wallet = useAsync(walletApi.get)
   const mine = useAsync(jobsApi.mine)
   const trust = useAsync(trustApi.me)
+  const kyc = useAsync(kycApi.me)
   const browse = useAsync(() => jobsApi.browse().then((r) => r.jobs.slice(0, 3)))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -91,6 +93,8 @@ export default function WorkerDashboard() {
         </Card>
       </div>
 
+      {kyc.data !== undefined && <KycCard kyc={kyc.data} />}
+
       <SectionTitle>New jobs</SectionTitle>
       <Async state={browse}>
         {(jobs) =>
@@ -99,7 +103,7 @@ export default function WorkerDashboard() {
           ) : (
             <div className="grid gap-5 md:grid-cols-3">
               {jobs.map((job) => (
-                <JobTile key={job.id} job={job} />
+                <JobTile key={job.id} job={job} verified={kyc.data?.status === 'verified'} />
               ))}
             </div>
           )

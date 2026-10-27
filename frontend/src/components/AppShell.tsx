@@ -27,6 +27,7 @@ const NAV: Record<Role, NavItem[]> = {
   worker: [
     { to: '/worker', icon: 'home', label: 'Home', end: true },
     { to: '/worker/jobs', icon: 'search', label: 'Find Jobs' },
+    { to: '/worker/verification', icon: 'lock', label: 'Verification' },
     { to: '/worker/wallet', icon: 'wallet', label: 'Wallet' },
     { to: '/worker/history', icon: 'history', label: 'History' },
     { to: '/worker/trust', icon: 'shield', label: 'My Trust' },
@@ -34,6 +35,7 @@ const NAV: Record<Role, NavItem[]> = {
   admin: [
     { to: '/admin', icon: 'home', label: 'Overview', end: true },
     { to: '/admin/disputes', icon: 'flag', label: 'Disputes' },
+    { to: '/admin/kyc', icon: 'lock', label: 'Worker KYC' },
     { to: '/admin/users', icon: 'users', label: 'Users' },
     { to: '/admin/payments', icon: 'wallet', label: 'Payments' },
   ],

@@ -106,7 +106,7 @@ export interface Application {
   message?: string
   status: 'pending' | 'selected' | 'rejected'
   createdAt: string
-  worker: { id: string; name: string; email: string; trustLevel?: TrustLevel }
+  worker: { id: string; name: string; email: string; trustLevel?: TrustLevel; kyc: KycSummary | null }
 }
 
 export interface Transaction {
@@ -173,6 +173,7 @@ export interface AdminDispute {
   clientAmount?: number
   workerAmount?: number
   resolution?: string
+  workerKyc?: KycSummary | null
 }
 
 export interface AdminPayment {
@@ -221,4 +222,60 @@ export interface PlatformOverview {
     lowTrustUsers: Array<{ id: string; role: 'client' | 'worker'; name?: string }>
   }
   activity: { paymentsToday: number; failedPaymentsToday: number; activeUsers: number }
+}
+
+export type IdType = 'national_id' | 'passport'
+
+export const ID_TYPE_LABEL: Record<IdType, string> = { national_id: 'National ID', passport: 'Passport' }
+
+// A worker's own verification result: the ID number is already masked.
+export interface MyKyc {
+  status: 'verified' | 'rejected'
+  fullName: string
+  idType: IdType
+  idNumber: string
+  reasons: string[]
+  submittedAt: string
+  verifiedAt?: string
+}
+
+export interface KycInput {
+  fullName: string
+  idType: IdType
+  idNumber: string
+  dateOfBirth: string
+  consent: boolean
+  images: { front?: string; back?: string; selfie?: string }
+}
+
+// All a client (or the dispute screen) sees of a verified worker.
+export interface KycSummary {
+  verified: true
+  name: string
+  idType: IdType
+  idNumberMasked: string
+  verifiedAt: string
+}
+
+export interface AdminKycRow {
+  workerId: string
+  workerName?: string
+  status: 'verified' | 'rejected' | 'not_submitted'
+  idType?: IdType
+  verifiedAt?: string
+}
+
+export interface AdminKycDetail {
+  workerId: string
+  workerName?: string
+  status: 'verified' | 'rejected'
+  fullName: string
+  idType: IdType
+  idNumber: string
+  dateOfBirth: string
+  consent: boolean
+  reasons: string[]
+  submittedAt: string
+  verifiedAt?: string
+  images: { front?: string; back?: string; selfie?: string }
 }
