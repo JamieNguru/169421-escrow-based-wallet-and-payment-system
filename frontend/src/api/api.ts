@@ -9,6 +9,7 @@ import type {
   Escrow,
   Job,
   JobLocation,
+  MyApplication,
   MyJob,
   Payment,
   PlatformOverview,
@@ -59,8 +60,16 @@ export const jobsApi = {
     location?: JobLocation
     photos?: string[]
   }) => post<{ job: Job }>('/api/jobs', input).then((r) => r.job),
-  apply: (jobId: string, message?: string) =>
-    post(`/api/jobs/${jobId}/apply`, message ? { message } : {}),
+  apply: (jobId: string, price: number, message?: string) =>
+    post<{ application: MyApplication }>(`/api/jobs/${jobId}/apply`, {
+      price,
+      ...(message ? { message } : {}),
+    }).then((r) => r.application),
+  // Change a pending quote while the job is still open.
+  updateQuote: (jobId: string, input: { price?: number; message?: string }) =>
+    patch<{ application: MyApplication }>(`/api/jobs/${jobId}/application`, input).then(
+      (r) => r.application,
+    ),
   applications: (jobId: string) =>
     get<{ applications: Application[]; nextCursor: string | null }>(
       `/api/jobs/${jobId}/applications`,
@@ -73,8 +82,8 @@ export const escrowApi = {
   get: (jobId: string) => get<{ escrow: Escrow }>(`/api/escrow/${jobId}`).then((r) => r.escrow),
   complete: (jobId: string) => post(`/api/escrow/${jobId}/complete`),
   confirm: (jobId: string) => post(`/api/escrow/${jobId}/confirm`),
-  // Pay a job's escrow from the wallet balance.
-  fund: (input: { jobId: string; workerId: string; amount: number }) => post('/api/escrow/fund', input),
+  // Pay a job's escrow from the wallet balance. The server works out the amount from the job.
+  fund: (input: { jobId: string; workerId: string }) => post('/api/escrow/fund', input),
   refundRequest: (jobId: string, reason: string) =>
     post(`/api/escrow/${jobId}/refund-request`, { reason }),
   dispute: (jobId: string, reason: string, photos?: string[]) =>
@@ -86,7 +95,7 @@ export const escrowApi = {
 }
 
 export const paymentsApi = {
-  stkPush: (input: { jobId: string; workerId: string; amount: number; phone?: string }) =>
+  stkPush: (input: { jobId: string; workerId: string; phone?: string }) =>
     post<{ payment: Payment; message: string; simulated: boolean }>('/api/payments/stk-push', input),
   // Add money to the wallet with an M-Pesa prompt, with no job involved.
   topUp: (input: { amount: number; phone?: string }) =>

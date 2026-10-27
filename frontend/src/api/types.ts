@@ -69,6 +69,11 @@ export interface Job {
   budget: number
   currency: Currency
   status: 'open' | 'assigned'
+  // The accepted quote, set when a worker is chosen. It replaces the budget and is locked.
+  agreedPrice?: number
+  agreedCurrency?: Currency
+  // Browse only: the calling worker's own quote on this job.
+  myApplication?: MyApplication
   location?: JobLocation
   // Lists carry the count; GET /api/jobs/:jobId adds the photos (data URLs).
   photoCount?: number
@@ -76,6 +81,13 @@ export interface Job {
   // Set when the worker sent a position and the job has coordinates.
   distanceKm?: number
   createdAt: string
+}
+
+export interface MyApplication {
+  price?: number
+  currency?: Currency
+  message?: string
+  status: 'pending' | 'selected' | 'rejected'
 }
 
 export interface MyJob extends Job {
@@ -88,6 +100,9 @@ export interface Application {
   id: string
   jobId: string
   workerId: string
+  // The worker's quote, in the job's currency (missing on applications from before quotes).
+  price?: number
+  currency?: Currency
   message?: string
   status: 'pending' | 'selected' | 'rejected'
   createdAt: string

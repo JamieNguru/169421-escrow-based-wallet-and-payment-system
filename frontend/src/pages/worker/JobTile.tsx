@@ -2,30 +2,50 @@ import { useState } from 'react'
 
 import { jobsApi } from '../../api/api'
 import { ApiError } from '../../api/http'
-import type { Job } from '../../api/types'
+import type { Job, MyApplication } from '../../api/types'
 import Icon from '../../components/Icon'
 import { PhotoGallery } from '../../components/Photos'
-import { Button, Card, ErrorNote, Small } from '../../components/ui'
+import { Button, Card, ErrorNote, Field, Small, TextArea } from '../../components/ui'
 import { formatDate, formatMoney } from '../../lib/format'
 
-// An open job with an Apply button (wireframes 10 and 11). The API has no
-// "my applications" list, so "Applied" comes from this session or a 409.
+// An open job where the worker sends a quote (wireframes 10 and 11). The
+// client's budget is only a guide: the price the worker sends is the one that
+// is locked in if they are chosen. A quote sent earlier comes back with the job.
 export default function JobTile({ job }: { job: Job }) {
-  const [applied, setApplied] = useState(false)
+  const [quote, setQuote] = useState<MyApplication | undefined>(job.myApplication)
+  const [editing, setEditing] = useState(false)
+  const [price, setPrice] = useState('')
+  const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [photos, setPhotos] = useState<string[] | null>(null)
   const [loadingPhotos, setLoadingPhotos] = useState(false)
 
-  const apply = async () => {
+  const amount = Number(price)
+  const validPrice = price !== '' && Number.isFinite(amount) && amount > 0
+
+  const openPanel = () => {
+    setPrice(quote?.price !== undefined ? String(quote.price) : '')
+    setMessage(quote?.message ?? '')
+    setError(null)
+    setEditing(true)
+  }
+
+  const send = async () => {
+    if (!validPrice) return
     setBusy(true)
     setError(null)
     try {
-      await jobsApi.apply(job.id)
-      setApplied(true)
+      setQuote(
+        quote
+          ? await jobsApi.updateQuote(job.id, { price: amount, message: message.trim() })
+          : await jobsApi.apply(job.id, amount, message.trim() || undefined),
+      )
+      setEditing(false)
     } catch (err) {
-      if (err instanceof ApiError && err.status === 409 && /already applied/i.test(err.message)) setApplied(true)
-      else setError(err instanceof Error ? err.message : 'Could not apply')
+      if (err instanceof ApiError && err.status === 409 && /already applied/i.test(err.message)) {
+        setError('You already sent a quote for this job. Reload to see it.')
+      } else setError(err instanceof Error ? err.message : 'Could not send your quote')
     } finally {
       setBusy(false)
     }
@@ -52,7 +72,10 @@ export default function JobTile({ job }: { job: Job }) {
     <Card>
       <div className="flex items-start justify-between gap-2">
         <div className="text-[17px] font-bold">{job.title}</div>
-        <div className="shrink-0 text-[17px] font-bold">{formatMoney(job.budget, job.currency)}</div>
+        <div className="shrink-0 text-right">
+          <div className="text-[17px] font-bold">{formatMoney(job.budget, job.currency)}</div>
+          <Small>Client’s budget</Small>
+        </div>
       </div>
       {place && (
         <Small className="mt-1 flex items-center gap-1">
@@ -71,12 +94,36 @@ export default function JobTile({ job }: { job: Job }) {
       {photos && photos.length > 0 && <div className="mt-2"><PhotoGallery photos={photos} /></div>}
       <div className="flex-1" />
       {error && <div className="mt-2"><ErrorNote message={error} /></div>}
-      {applied ? (
-        <Button small icon="check" disabled className="mt-3.5 border-brand/30 bg-brand-tint text-brand-ink">Applied</Button>
+      {editing ? (
+        <div className="mt-3.5 flex flex-col gap-3 border-t border-line pt-3.5">
+          <Field
+            label={`Your price (${job.currency})`}
+            type="number"
+            min={1}
+            step="any"
+            value={price}
+            onChange={(e) => setPrice(e.target.value)}
+            hint="Once the client chooses you, this price is locked and they pay exactly this."
+          />
+          <TextArea label="Message (optional)" value={message} maxLength={1000} onChange={(e) => setMessage(e.target.value)} />
+          <div className="flex gap-2">
+            <Button small tone="primary" disabled={busy || !validPrice} onClick={() => void send()}>
+              {busy ? 'Sending…' : quote ? 'Save quote' : 'Send quote'}
+            </Button>
+            <Button small disabled={busy} onClick={() => setEditing(false)}>Cancel</Button>
+          </div>
+        </div>
+      ) : quote ? (
+        <div className="mt-3.5 flex items-center justify-between gap-2">
+          <Button small icon="check" disabled className="w-auto flex-1 border-brand/30 bg-brand-tint text-brand-ink">
+            {quote.price !== undefined ? `Quote sent: ${formatMoney(quote.price, quote.currency ?? job.currency)}` : 'Applied'}
+          </Button>
+          {quote.status === 'pending' && (
+            <Button small className="w-auto px-4" onClick={openPanel}>Edit quote</Button>
+          )}
+        </div>
       ) : (
-        <Button small tone="primary" className="mt-3.5" disabled={busy} onClick={() => void apply()}>
-          {busy ? 'Applying…' : 'Apply'}
-        </Button>
+        <Button small tone="primary" className="mt-3.5" onClick={openPanel}>Send your quote</Button>
       )}
     </Card>
   )

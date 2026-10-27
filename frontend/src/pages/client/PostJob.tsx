@@ -91,7 +91,7 @@ export default function PostJob() {
                 <option key={c}>{c}</option>
               ))}
             </Select>
-            <Field label="Budget" type="number" required min={1} step="any" value={budget} onChange={(e) => setBudget(e.target.value)} hint="You only pay into escrow after you choose a worker" />
+            <Field label="Budget (a guide for workers)" type="number" required min={1} step="any" value={budget} onChange={(e) => setBudget(e.target.value)} hint="Workers send their own price. You only pay into escrow after you choose one." />
           </div>
           <div>
             <div className="mb-1.5 text-sm font-bold text-neutral-700">Photos (optional)</div>

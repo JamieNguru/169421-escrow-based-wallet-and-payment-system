@@ -1,7 +1,18 @@
-import type { Currency } from '../api/types'
+import type { Currency, Job } from '../api/types'
 
 export const formatMoney = (amount: number, currency: Currency | string = 'KES') =>
   `${currency} ${amount.toLocaleString('en-KE', { maximumFractionDigits: 2 })}`
+
+// What a job costs: the accepted quote once a worker is chosen, otherwise the client's budget (a guide).
+export const jobPrice = (job: Pick<Job, 'budget' | 'currency' | 'agreedPrice' | 'agreedCurrency'>) =>
+  job.agreedPrice !== undefined && job.agreedCurrency
+    ? { amount: job.agreedPrice, currency: job.agreedCurrency }
+    : { amount: job.budget, currency: job.currency }
+
+export const formatJobPrice = (job: Parameters<typeof jobPrice>[0]) => {
+  const { amount, currency } = jobPrice(job)
+  return formatMoney(amount, currency)
+}
 
 export const formatDate = (iso: string) =>
   new Date(iso).toLocaleDateString('en-KE', { day: 'numeric', month: 'short' })

@@ -7,7 +7,7 @@ import { Page } from '../../components/AppShell'
 import MpesaWait from '../../components/MpesaWait'
 import { Async, Banner, Button, Card, Empty, ErrorNote, Field, IconBubble, Label, LinkButton, Money, PageHead, SectionTitle, Small } from '../../components/ui'
 import { useAsync } from '../../hooks/useAsync'
-import { formatMoney } from '../../lib/format'
+import { formatJobPrice, formatMoney } from '../../lib/format'
 
 const QUICK_AMOUNTS = [500, 1000, 5000]
 
@@ -122,14 +122,14 @@ export default function ClientWallet() {
                 job.escrowStatus === 'work_submitted' ? (
                   <Card key={job.id}>
                     <div className="text-[17px] font-bold">{job.title}</div>
-                    <Small className="mb-4 mt-1">Work is done · {formatMoney(job.budget, job.currency)}</Small>
+                    <Small className="mb-4 mt-1">Work is done · {formatJobPrice(job)}</Small>
                     <div className="flex-1" />
                     <LinkButton to={`/client/jobs/${job.id}/release`} small tone="primary">Check &amp; pay worker</LinkButton>
                   </Card>
                 ) : (
                   <Card key={job.id}>
                     <div className="text-[17px] font-bold">{job.title}</div>
-                    <Small className="mb-4 mt-1">Worker: {job.counterpartyName ?? 'chosen'} · {formatMoney(job.budget, job.currency)}</Small>
+                    <Small className="mb-4 mt-1">Worker: {job.counterpartyName ?? 'chosen'} · {formatJobPrice(job)}</Small>
                     <div className="flex-1" />
                     <LinkButton to={`/client/jobs/${job.id}/pay`} small tone="primary">Pay into escrow</LinkButton>
                   </Card>
