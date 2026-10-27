@@ -122,6 +122,30 @@ describe("GET /api/wallet/convert", () => {
       expect(res.body.error).toBe("exchange rates unavailable");
     });
 
+    it("does not call the provider again for 30 seconds after a failure", async () => {
+      jest.useFakeTimers({ doNotFake: ["nextTick", "setImmediate", "setTimeout", "setInterval"] });
+      fetchMock.mockImplementation(async () => Promise.reject(new Error("network down")));
+
+      expect((await convert("from=KES&to=USD&amount=10")).status).toBe(503);
+      expect((await convert("from=KES&to=UGX&amount=10")).status).toBe(503);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      jest.setSystemTime(Date.now() + 31 * 1000);
+      fetchMock.mockImplementation(async () => jsonResponse(ratesBody));
+      expect((await convert("from=KES&to=USD&amount=129")).status).toBe(200);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("shares one provider call between simultaneous requests", async () => {
+      const responses = await Promise.all([
+        convert("from=KES&to=USD&amount=10"),
+        convert("from=KES&to=UGX&amount=10"),
+        convert("from=KES&to=TZS&amount=10"),
+      ]);
+      expect(responses.map((r) => r.status)).toEqual([200, 200, 200]);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
     it("serves stale rates when a refresh fails", async () => {
       jest.useFakeTimers({ doNotFake: ["nextTick", "setImmediate", "setTimeout", "setInterval"] });
       await convert("from=KES&to=USD&amount=129");

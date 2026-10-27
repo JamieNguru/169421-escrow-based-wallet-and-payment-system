@@ -4,6 +4,8 @@ import { SUPPORTED_CURRENCIES, type Currency } from "../validation/currency";
 
 const REQUEST_TIMEOUT_MS = 10000;
 const CACHE_TTL_MS = 60 * 60 * 1000;
+// After a failed refresh, answer from stale rates or fail at once instead of waiting out the timeout again.
+const RETRY_AFTER_FAILURE_MS = 30 * 1000;
 
 interface RateTable {
   // Units of each currency per 1 USD.
@@ -22,9 +24,13 @@ export interface Conversion {
 }
 
 let cached: RateTable | null = null;
+let inflight: Promise<RateTable> | null = null;
+let lastFailureAt = 0;
 
 export function resetRateCache(): void {
   cached = null;
+  inflight = null;
+  lastFailureAt = 0;
 }
 
 async function fetchRates(): Promise<RateTable> {
@@ -54,10 +60,20 @@ async function fetchRates(): Promise<RateTable> {
 async function getRates(): Promise<RateTable> {
   if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) return cached;
 
+  if (Date.now() - lastFailureAt < RETRY_AFTER_FAILURE_MS) {
+    if (cached) return cached;
+    throw new HttpError(503, "exchange rates unavailable");
+  }
+
+  // Requests that arrive together share one call to the provider.
+  inflight ??= fetchRates().finally(() => {
+    inflight = null;
+  });
   try {
-    cached = await fetchRates();
+    cached = await inflight;
     return cached;
   } catch (err) {
+    lastFailureAt = Date.now();
     console.error("exchange rate fetch failed:", err);
     if (cached) return cached;
     throw new HttpError(503, "exchange rates unavailable");
