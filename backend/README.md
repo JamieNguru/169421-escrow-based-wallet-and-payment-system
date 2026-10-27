@@ -97,24 +97,26 @@ Wallet effects for an amount `A`:
 
 ## Fund escrow
 
-`POST /api/escrow/fund` (client only) moves funds from the client's wallet into escrow for a job. It runs the `fund` transition from the state machine and creates `escrows/{jobId}` with status `in_escrow`. The wallet update, the escrow doc and an `escrow_fund` ledger record (`transactions/fund-{jobId}`) are written in one Firestore transaction. `jobId` is not yet validated against the `jobs` collection.
+`POST /api/escrow/fund` (client only) moves funds from the client's wallet into escrow for a job. It runs the `fund` transition from the state machine and creates `escrows/{jobId}` with status `in_escrow`. The wallet update, the escrow doc and an `escrow_fund` ledger record (`transactions/fund-{jobId}`) are written in one Firestore transaction. The job must exist, belong to the caller and be assigned to `workerId`.
+
+The amount is set by the server, not the client: it is the job's agreed price (the accepted quote, or the posted `budget` for jobs assigned before quotes existed), converted to whole KES at the current rate if the job is in another currency. `amount` is optional; if you send one that differs, the request fails with `409`.
 
 Request body:
 
 ```json
-{ "jobId": "job1", "workerId": "worker1", "amount": 500 }
+{ "jobId": "job1", "workerId": "worker1" }
 ```
 
 Returns `201` with `{ "escrow": { jobId, clientId, workerId, amount, currency, status, createdAt, fundedAt } }`.
 
 | Status | Cause |
 |---|---|
-| `400` | Missing or invalid `jobId`, `workerId` or `amount` (must be greater than 0) |
+| `400` | Missing or invalid `jobId` or `workerId`, or an invalid `amount` |
 | `401` | Missing or invalid token |
-| `403` | Caller is not a client |
-| `404` | Worker or client wallet not found |
-| `402` | Wallet `balance` is lower than `amount` |
-| `409` | The job's escrow is already funded (or past `pending`) |
+| `403` | Caller is not a client, or the job belongs to someone else |
+| `404` | Job, worker or client wallet not found |
+| `402` | Wallet `balance` is lower than the amount due |
+| `409` | The job has no worker or a different one, the `amount` sent is not the amount due, or the escrow is already funded (or past `pending`) |
 
 ## View escrow status
 
@@ -333,10 +335,10 @@ Settlement runs in one transaction and is safe to repeat: only a `pending` payme
 `POST /api/payments/stk-push` (client only):
 
 ```json
-{ "jobId": "job1", "workerId": "worker1", "amount": 500, "phone": "0708374149" }
+{ "jobId": "job1", "workerId": "worker1", "phone": "0708374149" }
 ```
 
-`phone` is optional and falls back to the phone saved at registration. `amount` must be a whole number of KES. Returns `202` with `{ "payment": { checkoutRequestId, merchantRequestId, kind: "escrow", jobId, workerId, clientId, amount, currency, phone, status, createdAt }, "message": "<Daraja customer message>", "simulated": false }`.
+`phone` is optional and falls back to the phone saved at registration. The amount is worked out by the server from the job (see Fund escrow); an optional whole-number `amount` that differs gets `409`, and a job that is not the caller's, not found, or not assigned to `workerId` gets `403`, `404` or `409`. The price the client was asked to pay (`agreedPrice`, `agreedCurrency`) is stored on the payment, and settling only funds the escrow if the job still has that price; otherwise the money stays in the wallet. Returns `202` with `{ "payment": { checkoutRequestId, merchantRequestId, kind: "escrow", jobId, workerId, clientId, amount, currency, phone, status, createdAt }, "message": "<Daraja customer message>", "simulated": false }`.
 
 ### Top up the wallet
 
@@ -413,21 +415,27 @@ Returns `201` with `{ "job": { "id", "clientId", "title", "description", "budget
 
 `POST /api/jobs/:jobId/apply` (worker only) records the calling worker's application in `applications/{jobId}_{workerId}` with status `pending`. `workerId` comes from the token, and the deterministic id means a worker can apply to a job only once.
 
-Request body (optional):
+Request body:
 
 ```json
-{ "message": "I can start tomorrow" }
+{ "price": 1200, "message": "I can start tomorrow" }
 ```
 
-`message` is a string of at most 1000 characters. Returns `201` with `{ "application": { "id", "jobId", "workerId", "message", "status", "createdAt" } }` (`message` is omitted when not given).
+`price` is the worker's quote: a number greater than 0, in the job's currency (the server copies the currency from the job). The job's `budget` is only a guide. `message` is optional, at most 1000 characters. Returns `201` with `{ "application": { "id", "jobId", "workerId", "price", "currency", "message", "status", "createdAt" } }` (`message` is omitted when not given).
 
 | Status | Cause |
 | --- | --- |
-| `400` | Invalid `message` |
+| `400` | Missing or invalid `price`, or invalid `message` |
 | `401` | Missing or invalid token |
 | `403` | Caller is not a worker |
 | `404` | Job or worker not found |
 | `409` | Job is not open, or the worker already applied |
+
+### Edit a quote
+
+`PATCH /api/jobs/:jobId/application` (worker only) changes the caller's own quote while the application is `pending` and the job is `open`. Body: `{ "price": 1000, "message": "..." }` with at least one of the two. Returns `200` with `{ "application" }`. `400` for an invalid or empty body, `404` if the worker has not applied, `409` once the application is no longer pending or the job is no longer open.
+
+`GET /api/jobs` includes `myApplication` (`price`, `currency`, `message`, `status`) on each job the calling worker has applied to.
 
 ## Review applications
 
@@ -463,7 +471,7 @@ Returns `200` with:
 
 `POST /api/jobs/:jobId/select` (client only) picks one applicant for the caller's own job. Body: `{ "workerId": "worker1" }`.
 
-In one transaction the job moves to `assigned` with `workerId` set, the chosen application becomes `selected`, and every other application for the job becomes `rejected`. The job then no longer appears in browse jobs.
+In one transaction the job moves to `assigned` with `workerId` set, the chosen application becomes `selected`, and every other application for the job becomes `rejected`. The chosen quote is copied onto the job as `agreedPrice` and `agreedCurrency`, which locks the price: from then on it is what the client pays. Applications made before quotes existed leave the job on its `budget`. The job then no longer appears in browse jobs.
 
 Returns `200` with `{ "job": { ... }, "application": { ... } }`.
 

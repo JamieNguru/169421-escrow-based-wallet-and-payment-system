@@ -46,6 +46,8 @@ const application = (jobId: string, workerId: string) => {
   store.set(`applications/${jobId}_${workerId}`, {
     jobId,
     workerId,
+    price: workerId === "w2" ? 700 : 900,
+    currency: "KES",
     status: "pending",
     createdAt: new Date(Date.UTC(2026, 9, 12, 8, 0)),
   });
@@ -83,6 +85,21 @@ describe("POST /api/jobs/:jobId/select", () => {
     expect(store.get("applications/job1_w2")!.status).toBe("selected");
     expect(store.get("applications/job1_w1")!.status).toBe("rejected");
     expect(store.get("applications/job1_w3")!.status).toBe("rejected");
+  });
+
+  test("copies the chosen quote onto the job as the locked price", async () => {
+    const res = await select();
+
+    expect(res.body.job).toMatchObject({ agreedPrice: 700, agreedCurrency: "KES" });
+    expect(store.get("jobs/job1")).toMatchObject({ agreedPrice: 700, agreedCurrency: "KES" });
+  });
+
+  test("an application from before quotes existed leaves the job on its budget", async () => {
+    store.set("applications/job1_w2", { jobId: "job1", workerId: "w2", status: "pending", createdAt: new Date() });
+    const res = await select();
+
+    expect(res.status).toBe(200);
+    expect(store.get("jobs/job1")).not.toHaveProperty("agreedPrice");
   });
 
   test("leaves other jobs' applications alone", async () => {

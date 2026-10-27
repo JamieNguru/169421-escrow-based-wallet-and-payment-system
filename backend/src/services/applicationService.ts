@@ -1,6 +1,7 @@
 import { getDb } from "../config/firebase";
 import { HttpError } from "../errors";
-import type { ApplyToJobInput } from "../validation/applications";
+import type { ApplyToJobInput, UpdateQuoteInput } from "../validation/applications";
+import type { Currency } from "../validation/currency";
 import { toDate } from "./escrowService";
 import type { Job } from "./jobService";
 import { getTrustScore } from "./trustScoreService";
@@ -11,6 +12,10 @@ export interface Application {
   id: string;
   jobId: string;
   workerId: string;
+  // The worker's quote, in the job's currency (copied by the server, never sent).
+  // Applications made before quotes existed have neither.
+  price?: number;
+  currency?: Currency;
   message?: string;
   status: ApplicationStatus;
   createdAt: Date;
@@ -43,12 +48,46 @@ export async function applyToJob(
     const data = {
       jobId,
       workerId,
+      price: input.price,
+      currency: job.data()!.currency as Currency,
       ...(input.message ? { message: input.message } : {}),
       status: "pending" as const,
       createdAt: new Date(),
     };
     tx.set(applicationRef, data);
     return { id, ...data };
+  });
+}
+
+// A worker changes their quote (or message) while it is pending and the job is still open.
+export async function updateQuote(
+  workerId: string,
+  jobId: string,
+  input: UpdateQuoteInput,
+): Promise<Application> {
+  const db = getDb();
+  const jobRef = db.collection("jobs").doc(jobId);
+  const applicationRef = db.collection("applications").doc(`${jobId}_${workerId}`);
+
+  return db.runTransaction(async (tx) => {
+    const [job, application] = await Promise.all([tx.get(jobRef), tx.get(applicationRef)]);
+
+    if (!job.exists) throw new HttpError(404, "Job not found");
+    if (!application.exists) throw new HttpError(404, "You have not applied to this job");
+    if (job.data()!.status !== "open") throw new HttpError(409, "Job is no longer open");
+    if (application.data()!.status !== "pending") throw new HttpError(409, "Your application is no longer pending");
+
+    const changes = {
+      ...(input.price !== undefined && { price: input.price, currency: job.data()!.currency as Currency }),
+      ...(input.message !== undefined && { message: input.message }),
+    };
+    tx.update(applicationRef, changes);
+    return {
+      ...(application.data() as Application),
+      ...changes,
+      id: applicationRef.id,
+      createdAt: toDate(application.data()!.createdAt),
+    };
   });
 }
 
@@ -78,14 +117,28 @@ export async function selectWorker(
     if (jobData.status !== "open") throw new HttpError(409, "Job already has a worker");
     if (!selected.exists) throw new HttpError(404, "Application not found");
 
-    tx.update(jobRef, { status: "assigned", workerId });
+    // The chosen quote becomes the job's price and is locked from here on.
+    const quote = selected.data()!;
+    const agreed =
+      typeof quote.price === "number"
+        ? { agreedPrice: quote.price, agreedCurrency: (quote.currency ?? jobData.currency) as Currency }
+        : {};
+
+    tx.update(jobRef, { status: "assigned", workerId, ...agreed });
     tx.update(selectedRef, { status: "selected" });
     for (const doc of all.docs) {
       if (doc.id !== selectedRef.id) tx.update(doc.ref, { status: "rejected" });
     }
 
     return {
-      job: { ...(jobData as Job), id: jobId, status: "assigned", workerId, createdAt: toDate(jobData.createdAt) },
+      job: {
+        ...(jobData as Job),
+        id: jobId,
+        status: "assigned",
+        workerId,
+        ...agreed,
+        createdAt: toDate(jobData.createdAt),
+      },
       application: {
         ...(selected.data() as Application),
         id: selectedRef.id,

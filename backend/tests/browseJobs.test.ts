@@ -9,6 +9,12 @@ const store = new Map<string, Record<string, any>>();
 jest.mock("../src/config/firebase", () => ({
   getDb: () => ({
     collection: (name: string) => {
+      const doc = (id: string) => ({
+        get: async () => {
+          const data = store.get(`${name}/${id}`);
+          return { exists: data !== undefined, data: () => data };
+        },
+      });
       const build = (filters: Array<[string, string, any]>, order: "asc" | "desc" | null, max: number) => ({
         where: (field: string, op: string, value: unknown) => build([...filters, [field, op, value]], order, max),
         orderBy: (_field: string, dir: "asc" | "desc" = "asc") => build(filters, dir, max),
@@ -29,7 +35,7 @@ jest.mock("../src/config/firebase", () => ({
           return { empty: docs.length === 0, docs: docs.slice(0, max) };
         },
       });
-      return build([], null, Infinity);
+      return { ...build([], null, Infinity), doc };
     },
   }),
 }));
@@ -74,6 +80,17 @@ describe("GET /api/jobs", () => {
     expect(res.body.jobs.map((j: { id: string }) => j.id)).toEqual(["job4", "job2", "job1"]);
     expect(res.body.jobs[0]).toMatchObject({ clientId: "client1", title: "Job job4", status: "open" });
     expect(res.body.nextCursor).toBeNull();
+  });
+
+  test("returns the calling worker's own quote on each job they applied to", async () => {
+    store.set("applications/job2_worker1", { price: 40, currency: "USD", message: "Hi", status: "pending" });
+    store.set("applications/job1_worker2", { price: 10, currency: "KES", status: "pending" });
+    const res = await browse();
+
+    const byId = Object.fromEntries(res.body.jobs.map((j: { id: string }) => [j.id, j]));
+    expect(byId.job2.myApplication).toEqual({ price: 40, currency: "USD", message: "Hi", status: "pending" });
+    expect(byId.job1.myApplication).toBeUndefined();
+    expect(byId.job4.myApplication).toBeUndefined();
   });
 
   test("filters by currency, case-insensitively", async () => {

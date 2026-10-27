@@ -7,6 +7,7 @@ import type { InitiateStkInput, SimulateOutcome, TopUpInput } from "../validatio
 import { normalizePhone } from "../validation/register";
 import { initiateStkPush, type StkPushResult } from "./darajaService";
 import { transition } from "./escrowStateMachine";
+import { amountDueKes, assertAmountMatches, assertPayable, jobTerms } from "./jobPricing";
 
 export type PaymentStatus = "pending" | "completed" | "failed";
 
@@ -17,6 +18,9 @@ export interface Payment {
   kind: "escrow" | "top_up";
   jobId?: string;
   workerId?: string;
+  // The job's price when the payment started; escrow is only funded if it still matches.
+  agreedPrice?: number;
+  agreedCurrency?: string;
   clientId: string;
   amount: number;
   currency: "KES";
@@ -42,6 +46,8 @@ interface StartInput {
   kind: Payment["kind"];
   jobId?: string;
   workerId?: string;
+  agreedPrice?: number;
+  agreedCurrency?: string;
 }
 
 // Sends the M-Pesa prompt (or fakes it in test mode) and records the payment
@@ -78,6 +84,8 @@ async function startPayment(
     kind: input.kind,
     ...(input.jobId && { jobId: input.jobId }),
     ...(input.workerId && { workerId: input.workerId }),
+    ...(input.agreedPrice !== undefined && { agreedPrice: input.agreedPrice }),
+    ...(input.agreedCurrency && { agreedCurrency: input.agreedCurrency }),
     clientId,
     amount: input.amount,
     currency: "KES",
@@ -99,15 +107,24 @@ export async function initiateEscrowPayment(
 ): Promise<{ payment: Payment; customerMessage: string }> {
   const db = getDb();
 
-  const [escrowSnap, workerSnap] = await Promise.all([
+  const [jobSnap, escrowSnap, workerSnap] = await Promise.all([
+    db.collection("jobs").doc(input.jobId).get(),
     db.collection("escrows").doc(input.jobId).get(),
     db.collection("workers").doc(input.workerId).get(),
   ]);
+  const job = assertPayable(jobSnap, clientId, input.workerId);
   if (escrowSnap.exists) throw new HttpError(409, "Escrow for this job is already funded");
   if (!workerSnap.exists) throw new HttpError(404, "Worker not found");
 
+  // The amount comes from the job. The price is recorded so settling can tell if it changed meanwhile.
+  const terms = jobTerms(job);
+  const amount = await amountDueKes(terms);
+  assertAmountMatches(input.amount, amount);
+
   return startPayment(clientId, {
-    amount: input.amount,
+    amount,
+    agreedPrice: terms.price,
+    agreedCurrency: terms.currency,
     phone: input.phone,
     accountReference: input.jobId,
     description: "Escrow funding",
@@ -204,11 +221,16 @@ export async function settlePayment(
     if (wallet.currency !== payment.currency) return fail(`Wallet is not in ${payment.currency}`);
 
     const job = jobSnap?.data();
+    // The price must still be the one the client was asked to pay.
+    const terms = job ? jobTerms(job) : undefined;
+    const priceUnchanged =
+      terms !== undefined && terms.price === payment.agreedPrice && terms.currency === payment.agreedCurrency;
     const canFund =
       fundsEscrow &&
       jobSnap?.exists &&
       job?.clientId === payment.clientId &&
       job?.workerId === payment.workerId &&
+      priceUnchanged &&
       escrowSnap?.exists === false &&
       workerSnap?.exists === true;
 
