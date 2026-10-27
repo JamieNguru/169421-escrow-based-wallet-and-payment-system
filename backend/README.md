@@ -548,6 +548,14 @@ npm run typecheck # tsc --noEmit over src/ and tests/
 
 TypeScript is pinned to 6.x because ts-jest doesn't support TypeScript 7 yet.
 
+### End-to-end test
+
+```
+npm test -- e2e
+```
+
+`tests/e2e/fullFlow.test.ts` runs the real routes and services together against one shared in-memory Firestore (`tests/helpers/memoryDb.ts`). It covers registration, the terms and KYC gates, top-up, job posting through payout, an M-Pesa-funded escrow, disputes, refunds, withdrawal and trust scores. Only the M-Pesa payout call and the trust-scoring service (`fetch`) are stubbed, and `DARAJA_SIMULATE` is on.
+
 ## Structure
 
 - `src/app.ts`: builds the Express app (used by both the server and the tests)
