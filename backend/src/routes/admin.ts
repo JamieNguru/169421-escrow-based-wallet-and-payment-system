@@ -3,6 +3,7 @@ import { Router } from "express";
 import { HttpError } from "../errors";
 import { authenticate, requireRole } from "../middleware/auth";
 import { getDispute, listDisputes, listPayments } from "../services/adminListService";
+import { getKycForAdmin, listDisputedWorkerKyc } from "../services/kycService";
 import { getPlatformOverview } from "../services/overviewService";
 import { getUser, listUsers, setUserStatus } from "../services/userService";
 import {
@@ -43,6 +44,22 @@ router.get("/disputes", async (req, res, next) => {
 router.get("/disputes/:jobId", async (req, res, next) => {
   try {
     res.json({ dispute: await getDispute(String(req.params.jobId)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/kyc", async (_req, res, next) => {
+  try {
+    res.json({ workers: await listDisputedWorkerKyc() });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/kyc/:workerId", async (req, res, next) => {
+  try {
+    res.json({ kyc: await getKycForAdmin(req.user!.sub, String(req.params.workerId)) });
   } catch (err) {
     next(err);
   }

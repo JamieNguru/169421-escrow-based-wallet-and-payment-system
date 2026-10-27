@@ -42,6 +42,7 @@ describe("POST /api/jobs/:jobId/apply", () => {
     store.set("jobs/job1", { clientId: "client1", title: "Logo", budget: 1000, currency: "KES", status: "open" });
     store.set("jobs/job2", { clientId: "client1", title: "Website", budget: 1000, currency: "KES", status: "funded" });
     store.set("workers/worker1", { name: "Wanjiru" });
+    store.set("kyc/worker1", { status: "verified" });
   });
 
   const apply = (jobId = "job1", payload: unknown = { price: 800 }, auth = tokenFor("worker1", "worker")) => {
@@ -131,6 +132,20 @@ describe("POST /api/jobs/:jobId/apply", () => {
     expect(store.has("applications/job2_worker1")).toBe(false);
   });
 
+  test.each([
+    ["has not submitted KYC", undefined],
+    ["was rejected", { status: "rejected" }],
+  ])("returns 403 when the worker %s", async (_name, kyc) => {
+    if (kyc) store.set("kyc/worker1", kyc);
+    else store.delete("kyc/worker1");
+
+    const res = await apply("job1");
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toMatch(/verify your identity/i);
+    expect(store.has("applications/job1_worker1")).toBe(false);
+  });
+
   test("returns 404 when the worker record does not exist", async () => {
     const res = await apply("job1", { price: 800 }, tokenFor("worker2", "worker"));
 
@@ -148,6 +163,7 @@ describe("POST /api/jobs/:jobId/apply", () => {
 
   test("lets different workers apply to the same job", async () => {
     store.set("workers/worker2", { name: "Otieno" });
+    store.set("kyc/worker2", { status: "verified" });
 
     const first = await apply("job1");
     const second = await apply("job1", { price: 800 }, tokenFor("worker2", "worker"));

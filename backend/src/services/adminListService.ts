@@ -1,6 +1,7 @@
 import { getDb } from "../config/firebase";
 import { HttpError } from "../errors";
 import { toDate } from "./escrowService";
+import { getKycSummary, type KycSummary } from "./kycService";
 
 type Doc = { id: string; data: () => Record<string, any> };
 
@@ -30,6 +31,7 @@ export interface AdminDispute {
   clientAmount?: number;
   workerAmount?: number;
   resolution?: string;
+  workerKyc?: KycSummary | null;
 }
 
 // A dispute with the job title and both parties' names. Photos are heavy, so
@@ -58,7 +60,10 @@ async function withNames(docId: string, data: Record<string, any>, includePhotos
 export async function getDispute(jobId: string): Promise<AdminDispute> {
   const snap = await getDb().collection("disputes").doc(jobId).get();
   if (!snap.exists) throw new HttpError(404, "Dispute not found");
-  return withNames(jobId, snap.data()!, true);
+  const dispute = await withNames(jobId, snap.data()!, true);
+  // The same limited summary a client sees; the full record needs the KYC endpoint, which is logged.
+  const workerKyc = dispute.workerId ? await getKycSummary(dispute.workerId) : null;
+  return { ...dispute, workerKyc };
 }
 
 export interface AdminDisputePage {

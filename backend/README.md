@@ -286,7 +286,7 @@ Query parameters (all optional):
 | `cursor` | The `nextCursor` from the previous page |
 | `userId` | Admin only: whose history to return |
 
-Returns `200` with `{ "transactions": [{ id, jobId, type, amount, currency, fromUserId, toUserId, createdAt }], "nextCursor": "<ISO date-time>" | null }`. `type` is `wallet_topup`, `escrow_fund`, `escrow_release` or `escrow_refund`. `nextCursor` is `null` on the last page.
+Returns `200` with `{ "transactions": [{ id, jobId, type, amount, currency, fromUserId, toUserId, createdAt }], "nextCursor": "<ISO date-time>" | null }`. `type` is `wallet_topup`, `escrow_fund`, `escrow_release` or `escrow_refund`. `nextCursor` is `null` on the last page. `worker.kyc` is the limited [KYC summary](#worker-kyc), or `null` if the worker is not verified.
 
 | Status | Cause |
 |---|---|
@@ -427,7 +427,7 @@ Request body:
 | --- | --- |
 | `400` | Missing or invalid `price`, or invalid `message` |
 | `401` | Missing or invalid token |
-| `403` | Caller is not a worker |
+| `403` | Caller is not a worker, or the worker is not verified (see [Worker KYC](#worker-kyc)) |
 | `404` | Job or worker not found |
 | `409` | Job is not open, or the worker already applied |
 
@@ -436,6 +436,36 @@ Request body:
 `PATCH /api/jobs/:jobId/application` (worker only) changes the caller's own quote while the application is `pending` and the job is `open`. Body: `{ "price": 1000, "message": "..." }` with at least one of the two. Returns `200` with `{ "application" }`. `400` for an invalid or empty body, `404` if the worker has not applied, `409` once the application is no longer pending or the job is no longer open.
 
 `GET /api/jobs` includes `myApplication` (`price`, `currency`, `message`, `status`) on each job the calling worker has applied to.
+
+## Worker KYC
+
+A worker must be verified before they can apply for jobs. Verification is **simulated**: the checks run automatically on submit and there is no admin review queue. A real ID-verification provider would replace only `runChecks` in `services/kycService.ts`.
+
+`POST /api/kyc` and `GET /api/kyc/me` are worker only.
+
+Request body for `POST /api/kyc`:
+
+```json
+{
+  "fullName": "Amina Njeri", "idType": "national_id", "idNumber": "12345678",
+  "dateOfBirth": "1995-04-12", "consent": true,
+  "images": { "front": "data:image/jpeg;base64,...", "back": "data:image/jpeg;base64,...", "selfie": "data:image/jpeg;base64,..." }
+}
+```
+
+`idType` is `national_id` (images: front, back, selfie) or `passport` (front, selfie). Images are data URLs, validated like job photos. The checks are: ID number format (national ID 7-8 digits, passport 6-9 letters or digits), age 18 or over, name matches the account, required images present, ID not registered to another account, and consent given. If all pass the worker is `verified`; otherwise `rejected` with plain-language `reasons`, and they can resubmit. Returns `201` with `{ "kyc": { "status", "fullName", "idType", "idNumber" (masked), "reasons", "submittedAt", "verifiedAt" } }`. `409` if already verified. `GET /api/kyc/me` returns the same shape, or `{ "kyc": null }` before the first submission.
+
+Who sees what:
+
+| Who | Sees |
+| --- | --- |
+| Worker | Own status and reasons, ID number masked |
+| Client (applications list) | `kyc` summary only: `verified`, `name`, `idType`, `idNumberMasked` (last 3 digits), `verifiedAt` |
+| Admin | Only for workers who are party to at least one dispute (`GET /api/admin/kyc` lists them). `GET /api/admin/kyc/:workerId` returns the full record and images, or `403` if the worker has no dispute. Each successful view is written to `kycAccessLog`. The dispute detail embeds the limited summary as `workerKyc`. |
+
+Storage: `kyc/{workerId}` holds the details and check results; images live in `kycFiles/{workerId}` so they never travel with lists; `kycIdIndex/{sha256(idType:idNumber)}` maps a verified ID to its worker so one ID can't be used by two accounts.
+
+**Privacy note.** ID numbers, dates of birth and photos are sensitive personal data (Kenya Data Protection Act 2019). They are kept out of every list, masked for clients, shown in full only through a dispute with an audit log, and consent is recorded with the submission. For production, move images to a private storage bucket with signed URLs and add a retention policy.
 
 ## Review applications
 
@@ -451,7 +481,10 @@ Returns `200` with:
     {
       "id": "job1_worker1", "jobId": "job1", "workerId": "worker1", "message": "I can start tomorrow",
       "status": "pending", "createdAt": "2026-10-12T08:01:00.000Z",
-      "worker": { "id": "worker1", "name": "Amina", "email": "amina@example.com", "trustLevel": "High" }
+      "worker": {
+        "id": "worker1", "name": "Amina", "email": "amina@example.com", "trustLevel": "High",
+        "kyc": { "verified": true, "name": "Amina Njeri", "idType": "national_id", "idNumberMasked": "*****678", "verifiedAt": "2026-10-10T09:00:00.000Z" }
+      }
     }
   ],
   "nextCursor": null
