@@ -285,7 +285,7 @@ These feed the frontend dashboards.
 | `401` | Missing or invalid token |
 | `403` | Wrong role |
 
-Firestore composite indexes needed: `jobs` on `clientId` + `createdAt` desc and on `workerId` + `createdAt` desc; `disputes` on `status` + `createdAt` desc; `payments` and `withdrawals` on `status` + `createdAt` desc.
+Firestore composite indexes needed: `jobs` on `clientId` + `createdAt` desc and on `workerId` + `createdAt` desc; `disputes`, `refundRequests`, `payments` and `withdrawals` on `status` + `createdAt` desc. All indexes the app uses are declared in `backend/firestore.indexes.json`. Deploy them once per Firebase project with `firebase deploy --only firestore:indexes --project <project-id>` from `backend/`. Without them the filtered admin lists (disputes, refund requests, payments) return `500`.
 
 ## View transaction history
 
