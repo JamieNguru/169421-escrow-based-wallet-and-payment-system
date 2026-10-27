@@ -58,20 +58,27 @@ export default function WorkerDashboard() {
           </div>
           <Async state={mine}>
             {(jobs) => {
-              const current = jobs.find((j) => j.escrowStatus === 'in_escrow' || j.escrowStatus === 'work_submitted')
-              if (!current) return <Small className="mt-3">No job in progress. Apply for one below.</Small>
+              const current = jobs.filter((j) => j.escrowStatus === 'in_escrow' || j.escrowStatus === 'work_submitted')
+              if (current.length === 0) return <Small className="mt-3">No job in progress. Apply for one below.</Small>
               return (
                 <>
-                  <div className="mt-3 text-[17px] font-bold">{current.title}</div>
-                  <Small className="mt-1">{formatJobPrice(current)} is held safely for you</Small>
+                  {current.map((job) => (
+                    <div key={job.id} className="mt-3">
+                      <div className="text-[17px] font-bold">{job.title}</div>
+                      <Small className="mt-1">{formatJobPrice(job)} is held safely for you</Small>
+                      {job.escrowStatus === 'in_escrow' ? (
+                        <Button small icon="check" className="mt-3" disabled={busy} onClick={() => void finish(job.id)}>
+                          {busy ? 'Saving…' : 'I have finished'}
+                        </Button>
+                      ) : (
+                        <Small className="mt-3 font-bold text-brand-ink">Waiting for the client to check your work</Small>
+                      )}
+                      <Link to={`/worker/report/${job.id}`} className="mt-2 block text-sm font-bold text-brand-ink hover:underline">
+                        Report a problem
+                      </Link>
+                    </div>
+                  ))}
                   <div className="flex-1" />
-                  {current.escrowStatus === 'in_escrow' ? (
-                    <Button small icon="check" className="mt-4" disabled={busy} onClick={() => void finish(current.id)}>
-                      {busy ? 'Saving…' : 'I have finished'}
-                    </Button>
-                  ) : (
-                    <Small className="mt-4 font-bold text-brand-ink">Waiting for the client to check your work</Small>
-                  )}
                 </>
               )
             }}

@@ -2,23 +2,35 @@ import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { escrowApi } from '../../api/api'
+import { useAuth } from '../../auth/AuthContext'
 import { Page } from '../../components/AppShell'
 import { PhotoPicker } from '../../components/Photos'
 import { Button, Card, Chip, ErrorNote, Label, PageHead, Small, TextArea } from '../../components/ui'
 import { formatMoney } from '../../lib/format'
 import { useAsync } from '../../hooks/useAsync'
 
-const REASONS = [
+const CLIENT_REASONS = [
   'The work was not finished',
   'The work was done badly',
   'The worker did not come',
   'Something else',
 ]
 
-// Raise a dispute on a job (wireframe 08). The money stays in escrow until an admin decides.
+const WORKER_REASONS = [
+  'The client has not released my payment',
+  'The client changed what the job needs',
+  'The client was not available',
+  'Something else',
+]
+
+// Raise a dispute on a job (wireframe 08), as the client or the worker. The money stays in
+// escrow until an admin decides. Only the client can ask for a refund.
 export default function ReportProblem() {
   const { jobId = '' } = useParams()
+  const { user } = useAuth()
   const navigate = useNavigate()
+  const isWorker = user?.role === 'worker'
+  const REASONS = isWorker ? WORKER_REASONS : CLIENT_REASONS
   const escrow = useAsync(() => escrowApi.get(jobId))
   const [reason, setReason] = useState(REASONS[0])
   const [details, setDetails] = useState('')
@@ -35,7 +47,7 @@ export default function ReportProblem() {
     try {
       if (wantsRefund) await escrowApi.refundRequest(jobId, text)
       else await escrowApi.dispute(jobId, text, photos)
-      navigate('/client')
+      navigate(isWorker ? '/worker' : '/client')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not send your report')
       setBusy(false)
@@ -50,7 +62,7 @@ export default function ReportProblem() {
         <Card className="gap-3.5 md:col-span-2">
           <div className="flex gap-2">
             <Chip tone={wantsRefund ? 'grey' : 'solid'} onClick={() => setWantsRefund(false)}>Report a problem</Chip>
-            <Chip tone={wantsRefund ? 'solid' : 'grey'} onClick={() => setWantsRefund(true)}>Ask for a refund</Chip>
+            {!isWorker && <Chip tone={wantsRefund ? 'solid' : 'grey'} onClick={() => setWantsRefund(true)}>Ask for a refund</Chip>}
           </div>
           <div className="text-sm font-bold text-neutral-700">What went wrong?</div>
           <div className="grid gap-2.5 sm:grid-cols-2" role="radiogroup">

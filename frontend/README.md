@@ -31,7 +31,7 @@ npm run lint       # oxlint
 |---|---|
 | Public | Login, Register |
 | Client | Dashboard, Post a Job, Choose a Worker, Pay into escrow (from the wallet or with an M-Pesa prompt), Release payment, Report a problem, Wallet (with a top-up), History, My Trust |
-| Worker | Dashboard, Find Jobs, Withdraw to M-Pesa, History, My Trust |
+| Worker | Dashboard (every job in progress, each with "Report a problem"), Find Jobs, Verification, Report a problem, Withdraw to M-Pesa, History, My Trust |
 | Admin | Overview, Disputes, Resolve dispute, Users, Payments |
 
 ## Where the app differs from the wireframes
