@@ -71,21 +71,21 @@ Test data: client `client1`, worker `worker1`, admin from the seed. Use a fresh 
 
 | # | Step | Expected | Result | Notes |
 |---|---|---|---|---|
-| D1 | Client raises a dispute on a funded job | Job marked disputed, appears in `/admin/disputes` | Fail (needs index deploy) | Client side works ("Under review"). Admin `/admin/disputes` shows "Internal server error": `GET /api/admin/disputes?status=open` returns 500 until the Firestore indexes in `backend/firestore.indexes.json` are deployed (X7). |
+| D1 | Client raises a dispute on a funded job | Job marked disputed, appears in `/admin/disputes` | Pass (re-run 2026-10-28) | Client side works ("Under review"). After the disputes index was created, `/admin/disputes` lists the open dispute with both parties, the reason and a Review link (it failed with a 500 before that, X7). |
 | D2 | Admin opens the dispute and resolves in the worker's favour | Funds go to the worker | Pass | Detail page (opened by URL) resolved "Pay the worker"; dispute shows resolved/release. Also resolved one as "Refund the client" (KES 700 back to the client wallet). |
 | D3 | Repeat with the worker raising it; admin resolves for the client | Funds return to the client wallet | Pass, gap fixed | The worker had no way to raise a dispute in the UI (API only). Added a worker report screen at `/worker/report/:jobId`, linked from the dashboard; a dispute raised there reached the admin queue. |
-| D4 | Client requests a refund | Appears in `/admin/refunds` | Partly | Request sent from the UI. `/admin/refunds` could not be opened (index, X7); the request was visible through the API. The client dashboard keeps showing the job as plain "In progress" with no sign a refund is pending (not fixed). |
-| D5 | Admin processes the refund | Client wallet credited, status updated on both sides | Partly | No UI path without the index. Processed through the API: request became approved. |
+| D4 | Client requests a refund | Appears in `/admin/refunds` | Pass (re-run 2026-10-28) | Request sent from the UI. `/admin/refunds` now opens (it failed before the index, X7). The client dashboard keeps showing the job as plain "In progress" with no sign a refund is pending (not fixed). |
+| D5 | Admin processes the refund | Client wallet credited, status updated on both sides | Partly | Processed earlier through the API. After the index, the Approved tab on `/admin/refunds` shows the request as Refunded. Approving from the UI was not re-run because no pending request was left. |
 
 ## 7. Admin
 
 | # | Step | Expected | Result | Notes |
 |---|---|---|---|---|
-| M1 | `/admin` overview | Counts and totals plausible against the data created | Fail | Cards load (escrow KES 700, 1 open dispute, 3 payments today with 1 failed, 7 active users, which includes accounts that were already there). The "Disputes needing action" panel shows "Internal server error" (X7). |
+| M1 | `/admin` overview | Counts and totals plausible against the data created | Pass, one number to check (re-run 2026-10-28) | Cards load (escrow KES 200, 1 open dispute, 7 active users, which includes accounts that were already there) and the "Disputes needing action" panel now lists the dispute. The overview says "1 job" held while the Payments page says "0 funded jobs" for the same KES 200 (not investigated). |
 | M2 | `/admin/users`: suspend the worker | Status changes | Pass | Suspend asks for a reason with a browser `prompt()` (stubbed in the test browser). Status became Suspended. |
 | M3 | As the suspended worker try to log in and use the app | Blocked with a clear message | Pass (API) | Login returns 403 "This account has been suspended". Login page rendering of that message not viewed. |
 | M4 | Reactivate the worker | Access restored | Pass | Restore returned the worker to Active. |
-| M5 | `/admin/payments` | Lists the payments from section 4 and 5 | Partly | Unfiltered list correct (top-up, escrow payments, failed one with its reason, withdrawal). The Pending, Completed and Failed tabs all showed "Internal server error" until indexes are deployed (X7). |
+| M5 | `/admin/payments` | Lists the payments from section 4 and 5 | Pass (re-run 2026-10-28) | Unfiltered list correct (top-up, escrow payments, failed one with its reason, withdrawal). Pending shows the withdrawal, Completed the top-up and escrow payment, Failed the cancelled payment with its reason (all three returned 500 before the indexes, X7). |
 
 ## 8. Trust levels
 
@@ -111,7 +111,7 @@ Test data: client `client1`, worker `worker1`, admin from the seed. Use a fresh 
 
 | Finding | Status |
 |---|---|
-| **X7, Firestore indexes missing (blocker for admin).** `GET /api/admin/disputes?status=open`, `/refund-requests?status=pending` and `/payments?status=...` return 500 on the real project (`FAILED_PRECONDITION: The query requires an index`), so the Disputes list, Refund requests list, Payments filter tabs and the overview's disputes panel fail. The README listed the indexes by hand, omitted `refundRequests`, and nothing declared them. The in-memory test database cannot catch this. | Added `backend/firestore.indexes.json` (11 indexes) and `backend/firebase.json`, corrected the README. **Not deployed:** the service account is refused (HTTP 403). Deploy with `firebase deploy --only firestore:indexes --project escrow-wallet-ed29d` from `backend/` after `firebase login`, then re-run D1, D4, D5, M1 and M5 in the UI. |
+| **X7, Firestore indexes missing (blocker for admin).** `GET /api/admin/disputes?status=open`, `/refund-requests?status=pending` and `/payments?status=...` return 500 on the real project (`FAILED_PRECONDITION: The query requires an index`), so the Disputes list, Refund requests list, Payments filter tabs and the overview's disputes panel fail. The README listed the indexes by hand, omitted `refundRequests`, and nothing declared them. The in-memory test database cannot catch this. | Added `backend/firestore.indexes.json` (11 indexes) and `backend/firebase.json`, corrected the README. The CLI deploy was refused for the service account (HTTP 403), so on 2026-10-28 the disputes, payments, withdrawals and refundRequests indexes were created in the Firebase console and the affected screens re-checked. The `jobs` status + currency + createdAt index is still not created in the project; run `firebase deploy --only firestore:indexes --project escrow-wallet-ed29d` from `backend/` to add it. |
 | **X6, slow pay screen** when the exchange-rate feed is down. | Fixed (see X6). |
 | **A2, no message** when the terms box is unticked. | Fixed and checked. |
 | **J10, double-counted history.** | Fixed and checked on the worker history. |
@@ -130,4 +130,4 @@ Needs the `DARAJA_*` keys, shortcode 174379, an HTTPS tunnel such as ngrok for `
 
 | Date | Commit | Tester | Sections run | Passed | Failed | Bug issues |
 |---|---|---|---|---|---|---|
-| 2026-10-27 | `c0a242f` plus the fixes on this branch | Claude, in the built-in browser against the local stack (simulate mode, real Firestore) | 2 to 9 in full or part; 10 (real sandbox) not run | See Result column | A2, D1, J5 (slow), X6, X7 (all with fixes above, X7 pending the index deploy) | None filed; fixed in this branch |
+| 2026-10-27 | `c0a242f` plus the fixes on this branch | Claude, in the built-in browser against the local stack (simulate mode, real Firestore) | 2 to 9 in full or part; 10 (real sandbox) not run | See Result column | A2, D1, J5 (slow), X6, X7 (all with fixes above; X7 verified fixed on 2026-10-28) | None filed; fixed in this branch |
