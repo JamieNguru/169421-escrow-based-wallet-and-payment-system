@@ -219,7 +219,7 @@ All three endpoints are admin only. Users are read from the `clients`, `workers`
 
 - `GET /api/admin/users?role=&status=&limit=&startAfter=` lists users from every collection, newest first. `role` is `client`, `worker` or `admin`; `status` is `active` or `suspended`; `limit` is 1-100 (default 25). Returns `200` with `{ "users": [{ id, name, email, phone?, role, status, statusReason?, createdAt }], "nextCursor"? }`. Pass `nextCursor` back as `startAfter` for the next page; it is absent on the last page.
 - `GET /api/admin/users/:role/:id` returns `200` with `{ "user": { ...same fields, wallet?: { id, balance, escrowBalance, currency } } }`. Admins have no wallet.
-- `PATCH /api/admin/users/:role/:id/status` with `{ "status": "active" | "suspended", "reason"?: "..." }` (`reason` is 1-1000 characters) suspends or reactivates a client or worker. It stamps `status`, `statusReason`, `statusUpdatedAt` and `statusUpdatedBy` and returns `200` with `{ "user": { ... } }`. Admin accounts cannot be suspended, which also stops an admin suspending themselves.
+- `PATCH /api/admin/users/:role/:id/status` with `{ "status": "active" | "suspended", "reason": "..." }` (`reason` is required, 1-1000 characters, for both) suspends or reactivates a client or worker. It stamps `status`, `statusReason`, `statusUpdatedAt` and `statusUpdatedBy` and returns `200` with `{ "user": { ... } }`. Admin accounts cannot be suspended, which also stops an admin suspending themselves.
 
 A suspended user gets `403` from `POST /api/auth/login`, after the password check. Tokens issued before the suspension stay valid until they expire (`JWT_EXPIRES_IN`, default 1 day).
 
@@ -285,7 +285,7 @@ These feed the frontend dashboards.
 | `401` | Missing or invalid token |
 | `403` | Wrong role |
 
-Firestore composite indexes needed: `jobs` on `clientId` + `createdAt` desc and on `workerId` + `createdAt` desc; `disputes` on `status` + `createdAt` desc; `payments` and `withdrawals` on `status` + `createdAt` desc.
+Firestore composite indexes needed: `jobs` on `clientId` + `createdAt` desc and on `workerId` + `createdAt` desc; `disputes`, `refundRequests`, `payments` and `withdrawals` on `status` + `createdAt` desc. All indexes the app uses are declared in `backend/firestore.indexes.json`. Deploy them once per Firebase project with `firebase deploy --only firestore:indexes --project <project-id>` from `backend/`. Without them the filtered admin lists (disputes, refund requests, payments) return `500`.
 
 ## View transaction history
 

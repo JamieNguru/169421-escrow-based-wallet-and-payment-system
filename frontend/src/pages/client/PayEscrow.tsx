@@ -25,7 +25,7 @@ export default function PayEscrow() {
   const jobs = useAsync(jobsApi.mine)
   const wallet = useAsync(walletApi.get)
   const [phone, setPhone] = useState(user?.phone ?? '')
-  const [kes, setKes] = useState<number | null>(null)
+  const [convertedKes, setConvertedKes] = useState<number | null>(null)
   const [quotes, setQuotes] = useState<Conversion[]>([])
   const [choice, setChoice] = useState<Method | null>(null)
   const [started, setStarted] = useState<{ payment: Payment; message: string } | null>(null)
@@ -33,22 +33,27 @@ export default function PayEscrow() {
   const [error, setError] = useState<string | null>(null)
 
   const job = jobs.data?.find((j) => j.id === jobId)
+  // A KES price needs no conversion, so it is known at once; any other currency waits for its rate.
+  const price = job ? jobPrice(job) : null
+  const kes = price?.currency === 'KES' ? Math.ceil(price.amount) : convertedKes
 
   useEffect(() => {
     if (!job) return
     let current = true
     const { amount, currency } = jobPrice(job)
     const targets = (['KES', ...OTHERS] as const).filter((c) => c !== currency)
-    Promise.all(targets.map((to) => walletApi.convert(currency, to, amount)))
-      .then((all) => {
-        if (!current) return
-        setQuotes(all)
-        const toKes = all.find((q) => q.to === 'KES')
-        setKes(currency === 'KES' ? Math.ceil(amount) : toKes ? Math.ceil(toKes.converted) : null)
-      })
-      .catch(() => {
-        if (current) setKes(currency === 'KES' ? Math.ceil(amount) : null)
-      })
+    // The other figures only decorate the page: each arrives on its own, so a slow or failed
+    // rate feed never holds up paying a KES job.
+    targets.forEach((to) => {
+      walletApi
+        .convert(currency, to, amount)
+        .then((q) => {
+          if (!current) return
+          setQuotes((all) => [...all.filter((x) => x.to !== q.to), q])
+          if (q.to === 'KES') setConvertedKes(Math.ceil(q.converted))
+        })
+        .catch(() => {})
+    })
     return () => {
       current = false
     }
@@ -113,9 +118,14 @@ export default function PayEscrow() {
                 <Card>
                   <Label>Agreed price</Label>
                   <Money size="text-[40px]">{kes === null ? '…' : formatMoney(kes, 'KES')}</Money>
-                  {quotes.length > 0 && (
+                  {quotes.some((q) => q.to !== 'KES') && (
                     <Small>
-                      ≈ {quotes.filter((q) => q.to !== 'KES').map((q) => formatMoney(Math.round(q.converted), q.to)).join(' · ')}
+                      ≈{' '}
+                      {quotes
+                        .filter((q) => q.to !== 'KES')
+                        .sort((a, b) => OTHERS.indexOf(a.to as (typeof OTHERS)[number]) - OTHERS.indexOf(b.to as (typeof OTHERS)[number]))
+                        .map((q) => formatMoney(Math.round(q.converted), q.to))
+                        .join(' · ')}
                     </Small>
                   )}
                   <div className="mt-4">

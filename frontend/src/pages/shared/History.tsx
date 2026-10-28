@@ -29,7 +29,7 @@ const STATUS: Record<string, { label: string; tone: 'green' | 'amber' | 'red' | 
   escrow_fund: { label: 'Held', tone: 'amber' },
   escrow_release: { label: 'Released', tone: 'green' },
   escrow_refund: { label: 'Refunded', tone: 'red' },
-  withdrawal: { label: 'Sent', tone: 'green' },
+  withdrawal: { label: 'Requested', tone: 'amber' },
   withdrawal_reversal: { label: 'Returned', tone: 'grey' },
 }
 
@@ -60,8 +60,14 @@ export default function History() {
     void load()
   }, [load])
 
-  const incoming = (t: Transaction) => t.toUserId === user?.id
-  const visible = rows.filter((t) => filter === 'all' || (filter === 'in') === incoming(t))
+  // Which way the money moved in the signed-in user's wallet. Escrow rows that do not touch it
+  // (a client's release, a worker's hold) get no sign, so one job is not counted twice.
+  const direction = (t: Transaction): 'in' | 'out' | null => {
+    if (t.type === 'escrow_fund') return t.fromUserId === user?.id ? 'out' : null
+    if (t.type === 'escrow_release') return t.toUserId === user?.id ? 'in' : null
+    return t.toUserId === user?.id ? 'in' : 'out'
+  }
+  const visible = rows.filter((t) => filter === 'all' || direction(t) === filter)
 
   return (
     <Page header={<PageHead title="History" sub="All money in and out of your wallet" />}>
@@ -80,13 +86,13 @@ export default function History() {
         <Table headers={['Date', 'What happened', 'Amount', 'Status']}>
           {visible.map((t) => {
             const status = STATUS[t.type] ?? { label: t.type, tone: 'grey' as const }
-            const isIn = incoming(t)
+            const dir = direction(t)
             return (
               <tr key={t.id}>
                 <Td>{formatDate(t.createdAt)}</Td>
                 <Td>{WHAT[t.type] ?? t.type}</Td>
-                <Td className={isIn ? 'font-bold text-brand-ink' : 'font-bold'}>
-                  {isIn ? '+ ' : '− '}
+                <Td className={dir === 'in' ? 'font-bold text-brand-ink' : 'font-bold'}>
+                  {dir === 'in' ? '+ ' : dir === 'out' ? '− ' : ''}
                   {formatMoney(t.amount, t.currency)}
                 </Td>
                 <Td>

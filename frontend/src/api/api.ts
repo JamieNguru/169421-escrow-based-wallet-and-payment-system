@@ -177,9 +177,6 @@ export const adminApi = {
     get<{ users: AdminUser[]; nextCursor?: string }>('/api/admin/users', { role, limit: 100 }).then(
       (r) => r.users,
     ),
-  setUserStatus: (role: Role, id: string, status: 'active' | 'suspended', reason?: string) =>
-    patch<{ user: AdminUser }>(`/api/admin/users/${role}/${id}/status`, {
-      status,
-      ...(reason ? { reason } : {}),
-    }).then((r) => r.user),
+  setUserStatus: (role: Role, id: string, status: 'active' | 'suspended', reason: string) =>
+    patch<{ user: AdminUser }>(`/api/admin/users/${role}/${id}/status`, { status, reason }).then((r) => r.user),
 }

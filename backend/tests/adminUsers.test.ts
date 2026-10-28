@@ -198,24 +198,23 @@ describe("admin user management", () => {
       });
     });
 
-    test("reactivates a suspended user and clears the reason", async () => {
-      const res = await patch("/api/admin/users/worker/w1/status", { status: "active" });
+    test("reactivates a suspended user and records why", async () => {
+      const res = await patch("/api/admin/users/worker/w1/status", { status: "active", reason: "appeal accepted" });
 
       expect(res.status).toBe(200);
-      expect(res.body.user.status).toBe("active");
-      expect(res.body.user.statusReason).toBeUndefined();
-      expect(store.get("workers/w1")).toMatchObject({ status: "active", statusReason: null });
+      expect(res.body.user).toMatchObject({ status: "active", statusReason: "appeal accepted" });
+      expect(store.get("workers/w1")).toMatchObject({ status: "active", statusReason: "appeal accepted" });
     });
 
     test("refuses to suspend an admin account, including the caller's own", async () => {
-      const res = await patch("/api/admin/users/admin/a1/status", { status: "suspended" });
+      const res = await patch("/api/admin/users/admin/a1/status", { status: "suspended", reason: "fraud" });
 
       expect(res.status).toBe(403);
       expect(store.get("admins/a1")?.status).toBeUndefined();
     });
 
     test("returns 404 for an unknown user", async () => {
-      const res = await patch("/api/admin/users/client/nope/status", { status: "suspended" });
+      const res = await patch("/api/admin/users/client/nope/status", { status: "suspended", reason: "fraud" });
 
       expect(res.status).toBe(404);
     });
@@ -223,7 +222,10 @@ describe("admin user management", () => {
     test.each([
       [{}],
       [{ status: "banned" }],
+      [{ status: "suspended" }],
+      [{ status: "active" }],
       [{ status: "suspended", reason: "" }],
+      [{ status: "suspended", reason: "   " }],
       [{ status: "suspended", reason: "x".repeat(1001) }],
     ])("rejects invalid body %j with 400", async (body) => {
       const res = await patch("/api/admin/users/client/c1/status", body);

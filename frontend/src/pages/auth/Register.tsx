@@ -31,6 +31,10 @@ export default function Register() {
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
+    if (!accepted) {
+      setError('Please agree to the terms of service to create your account')
+      return
+    }
     setBusy(true)
     setError(null)
     try {
@@ -83,7 +87,6 @@ export default function Register() {
         <label className="flex items-start gap-3 text-sm leading-snug text-neutral-700">
           <input
             type="checkbox"
-            required
             checked={accepted}
             onChange={(e) => setAccepted(e.target.checked)}
             className="mt-0.5 h-5 w-5 shrink-0 accent-brand"
@@ -97,7 +100,7 @@ export default function Register() {
           </span>
         </label>
         {error && <ErrorNote message={error} />}
-        <Button type="submit" tone="primary" disabled={busy || !accepted}>
+        <Button type="submit" tone="primary" disabled={busy}>
           {busy ? 'Creating account…' : 'Create account'}
         </Button>
       </form>

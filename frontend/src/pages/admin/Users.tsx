@@ -52,12 +52,17 @@ export default function Users() {
 
   const toggle = async (user: AdminUser) => {
     const suspending = user.status === 'active'
-    const reason = suspending ? window.prompt(`Why are you suspending ${user.name}? (optional)`) : undefined
-    if (reason === null) return // cancelled
+    const answer = window.prompt(`Why are you ${suspending ? 'suspending' : 'restoring'} ${user.name}?`)
+    if (answer === null) return // cancelled
+    const reason = answer.trim()
+    if (!reason) {
+      setError(`Give a reason to ${suspending ? 'suspend' : 'restore'} this account`)
+      return
+    }
     setBusyId(user.id)
     setError(null)
     try {
-      await adminApi.setUserStatus(user.role, user.id, suspending ? 'suspended' : 'active', reason || undefined)
+      await adminApi.setUserStatus(user.role, user.id, suspending ? 'suspended' : 'active', reason)
       state.reload()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not update this user')

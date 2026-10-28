@@ -260,7 +260,7 @@ export async function setUserStatus(
   const { ref, data } = await loadUser(role, id);
   const update = {
     status: input.status,
-    statusReason: input.reason ?? null,
+    statusReason: input.reason,
     statusUpdatedAt: new Date(),
     statusUpdatedBy: adminId,
   };

@@ -25,11 +25,10 @@ export type ListUsersQuery = z.infer<typeof listUsersQuerySchema>;
 export const setUserStatusSchema = z.object({
   status: statusSchema,
   reason: z
-    .string({ error: "reason must be a string" })
+    .string({ error: "A reason is required" })
     .trim()
     .min(1, "reason must not be empty")
-    .max(1000, "reason must be at most 1000 characters")
-    .optional(),
+    .max(1000, "reason must be at most 1000 characters"),
 });
 
 export type SetUserStatusInput = z.infer<typeof setUserStatusSchema>;

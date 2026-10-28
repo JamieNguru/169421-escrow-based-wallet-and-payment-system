@@ -59,6 +59,7 @@ export default function App() {
         <Route path="/worker" element={<AppShell role="worker" />}>
           <Route index element={<WorkerDashboard />} />
           <Route path="jobs" element={<FindJobs />} />
+          <Route path="report/:jobId" element={<ReportProblem />} />
           <Route path="verification" element={<Verification />} />
           <Route path="wallet" element={<Withdraw />} />
           <Route path="history" element={<History />} />
