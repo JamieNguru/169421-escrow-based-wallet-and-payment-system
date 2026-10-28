@@ -52,11 +52,11 @@ export default function Users() {
 
   const toggle = async (user: AdminUser) => {
     const suspending = user.status === 'active'
-    const answer = suspending ? window.prompt(`Why are you suspending ${user.name}?`) : undefined
+    const answer = window.prompt(`Why are you ${suspending ? 'suspending' : 'restoring'} ${user.name}?`)
     if (answer === null) return // cancelled
-    const reason = answer?.trim()
-    if (suspending && !reason) {
-      setError('Give a reason to suspend this account')
+    const reason = answer.trim()
+    if (!reason) {
+      setError(`Give a reason to ${suspending ? 'suspend' : 'restore'} this account`)
       return
     }
     setBusyId(user.id)

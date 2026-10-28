@@ -22,20 +22,14 @@ export const listUsersQuerySchema = z.object({
 
 export type ListUsersQuery = z.infer<typeof listUsersQuerySchema>;
 
-export const setUserStatusSchema = z
-  .object({
-    status: statusSchema,
-    reason: z
-      .string({ error: "reason must be a string" })
-      .trim()
-      .min(1, "reason must not be empty")
-      .max(1000, "reason must be at most 1000 characters")
-      .optional(),
-  })
-  .refine((body) => body.status !== "suspended" || body.reason !== undefined, {
-    error: "A reason is required to suspend a user",
-    path: ["reason"],
-  });
+export const setUserStatusSchema = z.object({
+  status: statusSchema,
+  reason: z
+    .string({ error: "A reason is required" })
+    .trim()
+    .min(1, "reason must not be empty")
+    .max(1000, "reason must be at most 1000 characters"),
+});
 
 export type SetUserStatusInput = z.infer<typeof setUserStatusSchema>;
 
