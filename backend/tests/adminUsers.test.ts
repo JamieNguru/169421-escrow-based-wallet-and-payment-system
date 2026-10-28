@@ -208,14 +208,14 @@ describe("admin user management", () => {
     });
 
     test("refuses to suspend an admin account, including the caller's own", async () => {
-      const res = await patch("/api/admin/users/admin/a1/status", { status: "suspended" });
+      const res = await patch("/api/admin/users/admin/a1/status", { status: "suspended", reason: "fraud" });
 
       expect(res.status).toBe(403);
       expect(store.get("admins/a1")?.status).toBeUndefined();
     });
 
     test("returns 404 for an unknown user", async () => {
-      const res = await patch("/api/admin/users/client/nope/status", { status: "suspended" });
+      const res = await patch("/api/admin/users/client/nope/status", { status: "suspended", reason: "fraud" });
 
       expect(res.status).toBe(404);
     });
@@ -223,7 +223,9 @@ describe("admin user management", () => {
     test.each([
       [{}],
       [{ status: "banned" }],
+      [{ status: "suspended" }],
       [{ status: "suspended", reason: "" }],
+      [{ status: "suspended", reason: "   " }],
       [{ status: "suspended", reason: "x".repeat(1001) }],
     ])("rejects invalid body %j with 400", async (body) => {
       const res = await patch("/api/admin/users/client/c1/status", body);
