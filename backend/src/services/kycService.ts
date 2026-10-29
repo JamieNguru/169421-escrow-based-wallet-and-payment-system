@@ -20,6 +20,8 @@ export interface MyKyc {
   fullName: string;
   idType: IdType;
   idNumber: string;
+  // Masked like the ID number; absent until a tax PIN is added.
+  taxPin?: string;
   reasons: string[];
   submittedAt: Date;
   verifiedAt?: Date;
@@ -36,6 +38,11 @@ export interface KycSummary {
 
 export function maskIdNumber(idNumber: string): string {
   return `${"*".repeat(Math.max(idNumber.length - 3, 0))}${idNumber.slice(-3)}`;
+}
+
+// Keeps the first and last characters, e.g. A*********Z.
+export function maskTaxPin(taxPin: string): string {
+  return `${taxPin[0]}${"*".repeat(Math.max(taxPin.length - 2, 0))}${taxPin.slice(-1)}`;
 }
 
 const idHash = (idType: string, idNumber: string) =>
@@ -105,6 +112,7 @@ function toMyKyc(data: Record<string, any>): MyKyc {
     fullName: data.fullName,
     idType: data.idType,
     idNumber: maskIdNumber(data.idNumber),
+    ...(data.taxPin && { taxPin: maskTaxPin(data.taxPin) }),
     reasons: data.reasons ?? [],
     submittedAt: toDate(data.submittedAt),
     ...(data.verifiedAt && { verifiedAt: toDate(data.verifiedAt) }),
@@ -137,6 +145,7 @@ export async function submitKyc(workerId: string, input: SubmitKycInput): Promis
       idType: input.idType,
       idNumber: input.idNumber,
       dateOfBirth: input.dateOfBirth,
+      ...(input.taxPin && { taxPin: input.taxPin }),
       consent: input.consent,
       consentAt: now,
       reasons,
@@ -150,6 +159,18 @@ export async function submitKyc(workerId: string, input: SubmitKycInput): Promis
 
     return toMyKyc(record);
   });
+}
+
+// Adds or replaces the tax PIN on a verified record, so a worker who is already
+// verified can add it when a payout asks for it.
+export async function addTaxPin(workerId: string, taxPin: string): Promise<MyKyc> {
+  const ref = getDb().collection("kyc").doc(workerId);
+  const snap = await ref.get();
+  if (!snap.exists || snap.data()!.status !== "verified") {
+    throw new HttpError(409, "Verify your identity before adding a tax PIN");
+  }
+  await ref.update({ taxPin, taxPinAddedAt: new Date() });
+  return toMyKyc({ ...snap.data()!, taxPin });
 }
 
 // null when the worker has not submitted anything yet.

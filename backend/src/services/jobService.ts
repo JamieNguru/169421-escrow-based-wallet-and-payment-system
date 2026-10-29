@@ -18,6 +18,8 @@ export interface Job {
   // The accepted quote, set when a worker is chosen. It overrides the budget and can't change.
   agreedPrice?: number;
   agreedCurrency?: Currency;
+  // The accepted quote's delivery promise in hours from funding; delivering later hurts the worker's trust score.
+  agreedDeliveryHours?: number;
   // Browse only: the calling worker's own quote on this job, so the page survives a reload.
   myApplication?: { price?: number; currency?: Currency; message?: string; status: string };
   location?: { label: string; lat?: number; lng?: number };

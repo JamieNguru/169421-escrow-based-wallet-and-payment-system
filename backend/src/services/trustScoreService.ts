@@ -23,9 +23,11 @@ export interface TrustScore {
   // "High", "Medium" or "Low" from the model, or "New" while there is too little history.
   trustLevel: string;
   probabilities: Record<string, number>;
-  // Only for "New": how many jobs are settled so far and how many more are needed.
+  // Settled jobs so far: for "New", how many more are needed; for a scored user, what the score rests on.
   finishedJobs?: number;
   jobsNeeded?: number;
+  // The model's inputs, so a score can be explained. Not sent for "New".
+  features?: Record<string, number>;
 }
 
 const HOUR_MS = 3_600_000;
@@ -36,7 +38,7 @@ const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
 // has been submitted, so there is no response time). They sit near the middle
 // of the training data, so a missing value doesn't push a score either way.
 const NEUTRAL: Record<ScoredRole, Record<string, number>> = {
-  worker: { job_completion_rate: 0.99, dispute_rate: 0.01, response_time_hours: 9 },
+  worker: { job_completion_rate: 0.99, dispute_rate: 0.01, delivery_overrun: 0 },
   client: { payment_completion_rate: 0.99, refund_rate: 0.01, escrow_release_time_hours: 9 },
 };
 
@@ -69,10 +71,11 @@ export async function getTrustHistory(userId: string, role: ScoredRole): Promise
   }
 
   const party = role === "worker" ? "workerId" : "clientId";
-  const [escrowSnap, disputeSnap, refundSnap] = await Promise.all([
+  const [escrowSnap, disputeSnap, refundSnap, jobSnap] = await Promise.all([
     db.collection("escrows").where(party, "==", userId).get(),
     db.collection("disputes").where(party, "==", userId).get(),
     role === "client" ? db.collection("refundRequests").where("clientId", "==", userId).get() : undefined,
+    role === "worker" ? db.collection("jobs").where("workerId", "==", userId).get() : undefined,
   ]);
 
   const escrows = (escrowSnap.docs as Doc[]).map((d) => d.data());
@@ -84,14 +87,25 @@ export async function getTrustHistory(userId: string, role: ScoredRole): Promise
   if (role === "worker") {
     // A dispute against the worker counts whoever raised it.
     const disputes = disputeSnap.docs.length;
-    const response = mean(
-      escrows.map((e) => hoursBetween(e.fundedAt, e.workSubmittedAt)).filter((h): h is number => h !== undefined),
+    // How far past the promised delivery time each submitted job ran, as a share of
+    // that time (0 when on time). Jobs without a promise, or not yet submitted, are skipped.
+    const promised = new Map<string, number>();
+    for (const doc of jobSnap?.docs ?? []) {
+      const hours = doc.data().agreedDeliveryHours;
+      if (typeof hours === "number" && hours > 0) promised.set(doc.id, hours);
+    }
+    const overrun = mean(
+      escrows.flatMap((e) => {
+        const took = hoursBetween(e.fundedAt, e.workSubmittedAt);
+        const allowed = promised.get(e.jobId);
+        return took === undefined || allowed === undefined ? [] : [Math.max(0, took - allowed) / allowed];
+      }),
     );
     return {
       features: {
         job_completion_rate: completionRate ?? NEUTRAL.worker.job_completion_rate,
         dispute_rate: escrows.length ? clamp01(disputes / escrows.length) : NEUTRAL.worker.dispute_rate,
-        response_time_hours: response ?? NEUTRAL.worker.response_time_hours,
+        delivery_overrun: overrun ?? NEUTRAL.worker.delivery_overrun,
       },
       finishedJobs,
       overridden: false,
@@ -159,5 +173,7 @@ export async function getTrustScore(userId: string, role: ScoredRole): Promise<T
     role,
     trustLevel: body.trust_level,
     probabilities: body.probabilities as Record<string, number>,
+    features,
+    ...(!overridden && { finishedJobs }),
   };
 }

@@ -480,6 +480,26 @@ Storage: `kyc/{workerId}` holds the details and check results; images live in `k
 
 **Privacy note.** ID numbers, dates of birth and photos are sensitive personal data (Kenya Data Protection Act 2019). They are kept out of every list, masked for clients, shown in full only through a dispute with an audit log, and consent is recorded with the submission. For production, move images to a private storage bucket with signed URLs and add a retention policy.
 
+## Tax records and compliance
+
+The platform can't stop someone under-declaring income; it can verify who is paid, keep the records and point out patterns. All amounts are KES, and "year" follows Kenyan time (UTC+3).
+
+**Tax PIN.** A worker can add a KRA PIN (a letter, nine digits, a letter, e.g. `A123456789Z`) as an optional `taxPin` on `POST /api/kyc`, or later with `POST /api/kyc/tax-pin` `{ "taxPin": "A123456789Z" }` (verified workers only: `409` otherwise, `400` for a malformed PIN). It is stored on the KYC record and only ever returned masked (`A*********Z`).
+
+**Payout limit.** A worker with no tax PIN can withdraw up to `TAX_PIN_THRESHOLD_KES` (default 100,000) in a calendar year, counting withdrawals that did not fail. Going past it returns `403` from `POST /api/payments/withdraw` and nothing is debited; adding a tax PIN lifts the limit.
+
+**Statement.** `GET /api/wallet/statement?year=2026` (client or worker, `year` defaults to the current one) returns `{ "statement": { year, role, currency, months: [12 x { month, jobs, received, withdrawn }], totals, tax } }`. Clients get `paid` and `refunded` instead of `received` and `withdrawn`. It is built from the ledger; `tax` (workers only) has the masked PIN and the yearly limit.
+
+**Flags (admin).** `GET /api/admin/compliance` returns `{ "flags": [{ type, severity, subject, counterparty?, jobCount, amount, detail }], "thresholdKes" }`, high severity first. The rules are in `services/complianceService.ts`, with limits in `config/compliance.ts`:
+
+| `type` | Raised when |
+|---|---|
+| `possible_splitting` | 5 or more paid jobs under KES 10,000 each between the same client and worker, adding up to KES 50,000 or more, within 14 days |
+| `refund_after_delivery` | 2 or more refunded jobs between the same two people where the work had been marked done |
+| `no_tax_pin` | A worker was paid KES 100,000 or more this year with no tax PIN on file |
+
+Flags are prompts to look at the history, not findings. Which obligations apply (reporting, withholding) depends on the law and should be checked with a tax adviser before launch.
+
 ## Review applications
 
 `GET /api/jobs/:jobId/applications` (client only) lists the applications for one of the caller's own jobs, newest first. Each application includes the applicant's `id`, `name` and `email` from `workers/{workerId}`, and their `trustLevel` (`High`, `Medium` or `Low`) from the trust-scoring service. Scores are cached for 5 minutes and fetched ten at a time; if the service can't score a worker, `trustLevel` is left out instead of failing the request.

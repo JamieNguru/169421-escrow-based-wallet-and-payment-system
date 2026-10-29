@@ -47,6 +47,7 @@ const application = (jobId: string, workerId: string) => {
     jobId,
     workerId,
     price: workerId === "w2" ? 700 : 900,
+    deliveryHours: workerId === "w2" ? 48 : 12,
     currency: "KES",
     status: "pending",
     createdAt: new Date(Date.UTC(2026, 9, 12, 8, 0)),
@@ -92,6 +93,13 @@ describe("POST /api/jobs/:jobId/select", () => {
 
     expect(res.body.job).toMatchObject({ agreedPrice: 700, agreedCurrency: "KES" });
     expect(store.get("jobs/job1")).toMatchObject({ agreedPrice: 700, agreedCurrency: "KES" });
+  });
+
+  test("copies the chosen quote's delivery promise onto the job", async () => {
+    const res = await select();
+
+    expect(res.body.job).toMatchObject({ agreedDeliveryHours: 48 });
+    expect(store.get("jobs/job1")).toMatchObject({ agreedDeliveryHours: 48 });
   });
 
   test("an application from before quotes existed leaves the job on its budget", async () => {

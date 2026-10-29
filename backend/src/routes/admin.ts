@@ -2,6 +2,7 @@ import { Router } from "express";
 
 import { HttpError } from "../errors";
 import { authenticate, requireRole } from "../middleware/auth";
+import { getComplianceFlags } from "../services/complianceService";
 import { getDispute, listDisputes, listPayments, listRefundRequests } from "../services/adminListService";
 import { getKycForAdmin, listDisputedWorkerKyc } from "../services/kycService";
 import { getPlatformOverview } from "../services/overviewService";
@@ -22,6 +23,15 @@ router.use(authenticate, requireRole("admin"));
 router.get("/overview", async (_req, res, next) => {
   try {
     res.json(await getPlatformOverview());
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Patterns worth a look (splitting, refunds after delivery, large earnings with no tax PIN).
+router.get("/compliance", async (_req, res, next) => {
+  try {
+    res.json(await getComplianceFlags());
   } catch (err) {
     next(err);
   }

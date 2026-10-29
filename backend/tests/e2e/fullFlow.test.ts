@@ -82,7 +82,7 @@ async function postAndAssign(client: User, worker: User, price: number): Promise
   expect(posted.status).toBe(201);
   const jobId = posted.body.job.id;
 
-  const applied = await api.post(`/api/jobs/${jobId}/apply`).set("Authorization", worker.auth).send({ price });
+  const applied = await api.post(`/api/jobs/${jobId}/apply`).set("Authorization", worker.auth).send({ price, deliveryHours: 24 });
   expect(applied.status).toBe(201);
 
   const selected = await api.post(`/api/jobs/${jobId}/select`).set("Authorization", client.auth).send({ workerId: worker.id });
@@ -195,7 +195,7 @@ describe("end-to-end: auth, jobs, wallet, escrow, disputes, admin and trust", ()
     const unverified = await api
       .post(`/api/jobs/${posted.body.job.id}/apply`)
       .set("Authorization", worker.auth)
-      .send({ price: 400 });
+      .send({ price: 400, deliveryHours: 24 });
     expect(unverified.status).toBe(403);
   });
 
