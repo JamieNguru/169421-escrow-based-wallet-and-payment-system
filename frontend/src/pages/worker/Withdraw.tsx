@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 
 import { paymentsApi, transactionsApi, walletApi } from '../../api/api'
 import { useAuth } from '../../auth/AuthContext'
@@ -52,6 +53,9 @@ export default function Withdraw() {
                   <Field label="M-Pesa phone number" value={user?.phone ?? ''} readOnly hint="We send to the number you registered with" />
                 </div>
                 {error && <ErrorNote message={error} />}
+                {error && /tax PIN/i.test(error) && (
+                  <Link to="/worker/verification" className="text-sm font-bold text-brand-ink hover:underline">Add your tax PIN</Link>
+                )}
                 {sent && <Banner icon="check">{sent}</Banner>}
                 <div className="flex-1" />
                 <Button tone="primary" icon="phone" disabled={busy || !Number(amount)} onClick={() => void withdraw()}>

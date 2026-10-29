@@ -49,7 +49,51 @@ function ImageSlot({ label, value, onChange }: { label: string; value?: string; 
   )
 }
 
-function Result({ kyc, onRetry }: { kyc: MyKyc; onRetry: () => void }) {
+const TAX_PIN_FORMAT = /^[AP]\d{9}[A-Z]$/i
+
+// Add or replace the tax PIN once verified. Needed before withdrawing large amounts in a year.
+function TaxPinCard({ pin, onSaved }: { pin?: string; onSaved: (kyc: MyKyc) => void }) {
+  const [value, setValue] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const valid = TAX_PIN_FORMAT.test(value.trim())
+
+  const save = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      onSaved(await kycApi.addTaxPin(value.trim()))
+      setValue('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save your tax PIN')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Card className="gap-3">
+      <div className="text-[17px] font-bold">Tax PIN</div>
+      <Small>
+        {pin ? `On file: ${pin}. ` : 'Not added yet. '}
+        Without one you can withdraw a limited amount each year; with one there is no limit.
+      </Small>
+      <Field
+        label={pin ? 'Replace your tax PIN' : 'Your tax PIN (KRA PIN)'}
+        value={value}
+        onChange={(e) => setValue(e.target.value.toUpperCase())}
+        maxLength={11}
+        hint="A letter, nine digits and a letter, like A123456789Z."
+      />
+      {error && <ErrorNote message={error} />}
+      <Button small tone="primary" className="w-auto self-start px-5" disabled={busy || !valid} onClick={() => void save()}>
+        {busy ? 'Saving…' : pin ? 'Replace tax PIN' : 'Save tax PIN'}
+      </Button>
+    </Card>
+  )
+}
+
+function Result({ kyc, onRetry, onChange }: { kyc: MyKyc; onRetry: () => void; onChange: (kyc: MyKyc) => void }) {
   if (kyc.status === 'verified') {
     return (
       <div className="flex flex-col gap-4">
@@ -60,6 +104,7 @@ function Result({ kyc, onRetry }: { kyc: MyKyc; onRetry: () => void }) {
           <div className="text-[17px] font-bold">{kyc.fullName}</div>
           <Small className="mt-0.5">{ID_TYPE_LABEL[kyc.idType]} · {kyc.idNumber}</Small>
         </Card>
+        <TaxPinCard pin={kyc.taxPin} onSaved={onChange} />
         <LinkButton to="/worker/jobs" tone="primary">Find jobs</LinkButton>
       </div>
     )
@@ -101,7 +146,11 @@ export default function Verification() {
   const set = <K extends keyof KycInput>(key: K, value: KycInput[K]) => setForm((f) => ({ ...f, [key]: value }))
   const setImage = (slot: Slot, url?: string) => setForm((f) => ({ ...f, images: { ...f.images, [slot]: url } }))
 
-  const detailsValid = form.fullName.trim() !== '' && form.idNumber.trim() !== '' && form.dateOfBirth !== ''
+  const detailsValid =
+    form.fullName.trim() !== '' &&
+    form.idNumber.trim() !== '' &&
+    form.dateOfBirth !== '' &&
+    (!form.taxPin || TAX_PIN_FORMAT.test(form.taxPin))
   const slots: Array<{ slot: Slot; label: string }> =
     form.idType === 'passport'
       ? [{ slot: 'front', label: 'Passport photo page' }, { slot: 'selfie', label: 'Selfie' }]
@@ -133,7 +182,7 @@ export default function Verification() {
       <Async state={state}>
         {(saved) => {
           const outcome = result ?? (retrying ? null : saved)
-          if (outcome) return <Result kyc={outcome} onRetry={retry} />
+          if (outcome) return <Result kyc={outcome} onRetry={retry} onChange={setResult} />
 
           return (
             <div className="flex max-w-xl flex-col gap-4">
@@ -152,6 +201,13 @@ export default function Verification() {
                   </Select>
                   <Field label="ID number" value={form.idNumber} onChange={(e) => set('idNumber', e.target.value)} />
                   <Field label="Date of birth" type="date" value={form.dateOfBirth} onChange={(e) => set('dateOfBirth', e.target.value)} />
+                  <Field
+                    label="Tax PIN (optional)"
+                    value={form.taxPin ?? ''}
+                    maxLength={11}
+                    onChange={(e) => set('taxPin', e.target.value.toUpperCase() || undefined)}
+                    hint="Your KRA PIN. You can add it later, but you will need it to withdraw large amounts."
+                  />
                   <Button tone="primary" disabled={!detailsValid} onClick={() => setStep('photos')}>Next: photos</Button>
                 </Card>
               ) : (

@@ -4,6 +4,10 @@ export const formatMoney = (amount: number, currency: Currency | string = 'KES')
   `${currency} ${amount.toLocaleString('en-KE', { maximumFractionDigits: 2 })}`
 
 // What a job costs: the accepted quote once a worker is chosen, otherwise the client's budget (a guide).
+// A delivery promise: whole hours up to two days, then days.
+export const formatHours = (hours: number) =>
+  hours < 48 ? `${Math.round(hours * 10) / 10} h` : `${Math.round((hours / 24) * 10) / 10} days`
+
 export const jobPrice = (job: Pick<Job, 'budget' | 'currency' | 'agreedPrice' | 'agreedCurrency'>) =>
   job.agreedPrice !== undefined && job.agreedCurrency
     ? { amount: job.agreedPrice, currency: job.agreedCurrency }

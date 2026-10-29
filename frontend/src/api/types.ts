@@ -88,6 +88,8 @@ export interface Job {
 export interface MyApplication {
   price?: number
   currency?: Currency
+  // Hours the worker promised to deliver within (missing on quotes from before delivery times).
+  deliveryHours?: number
   message?: string
   status: 'pending' | 'selected' | 'rejected'
 }
@@ -105,6 +107,7 @@ export interface Application {
   // The worker's quote, in the job's currency (missing on applications from before quotes).
   price?: number
   currency?: Currency
+  deliveryHours?: number
   message?: string
   status: 'pending' | 'selected' | 'rejected'
   createdAt: string
@@ -122,14 +125,54 @@ export interface Transaction {
   createdAt: string
 }
 
+export interface StatementMonth {
+  month: number
+  // A worker's rows have received and withdrawn; a client's have paid and refunded.
+  received?: number
+  withdrawn?: number
+  paid?: number
+  refunded?: number
+  jobs: number
+}
+
+export interface Statement {
+  year: number
+  role: 'client' | 'worker'
+  currency: 'KES'
+  months: StatementMonth[]
+  totals: { received?: number; withdrawn?: number; paid?: number; refunded?: number; jobs: number }
+  // Workers only: the masked tax PIN on file, and the yearly withdrawal limit without one.
+  tax?: { taxPin?: string; thresholdKes: number }
+}
+
+export type FlagType = 'possible_splitting' | 'no_tax_pin' | 'refund_after_delivery'
+
+export interface FlagParty {
+  role: 'client' | 'worker'
+  id: string
+  name?: string
+}
+
+export interface ComplianceFlag {
+  type: FlagType
+  severity: 'high' | 'medium'
+  subject: FlagParty
+  counterparty?: FlagParty
+  jobCount: number
+  amount: number
+  detail: string
+}
+
 export interface TrustScore {
   userId: string
   role: 'client' | 'worker'
   trustLevel: TrustLevel
   probabilities: Record<string, number>
-  // Only for 'New': jobs settled so far and how many more are needed.
+  // Jobs settled so far: for 'New', how many more are needed; otherwise what the score rests on.
   finishedJobs?: number
   jobsNeeded?: number
+  // The model's inputs (not sent for 'New'), keyed by the ML feature names.
+  features?: Record<string, number>
 }
 
 export type PaymentStatus = 'pending' | 'completed' | 'failed'
@@ -251,6 +294,8 @@ export interface MyKyc {
   fullName: string
   idType: IdType
   idNumber: string
+  // Masked; absent until a tax PIN is added.
+  taxPin?: string
   reasons: string[]
   submittedAt: string
   verifiedAt?: string
@@ -261,6 +306,8 @@ export interface KycInput {
   idType: IdType
   idNumber: string
   dateOfBirth: string
+  // Optional: needed before large withdrawals, and can be added later.
+  taxPin?: string
   consent: boolean
   images: { front?: string; back?: string; selfie?: string }
 }
