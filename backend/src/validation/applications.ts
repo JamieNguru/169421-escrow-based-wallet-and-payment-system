@@ -12,16 +12,32 @@ const priceSchema = z
   .positive("price must be greater than 0")
   .finite("price must be a finite number");
 
+// How long the worker promises to take, counted from when the client funds the job.
+// Delivering later than this counts against their trust score.
+const deliveryHoursSchema = z
+  .number({ error: "deliveryHours must be a number" })
+  .positive("deliveryHours must be greater than 0")
+  .max(24 * 30, "deliveryHours must be at most 720 (30 days)")
+  .finite("deliveryHours must be a finite number");
+
 export const applyToJobSchema = z.object({
   price: priceSchema,
+  deliveryHours: deliveryHoursSchema,
   message: messageSchema.optional(),
 });
 
 export type ApplyToJobInput = z.infer<typeof applyToJobSchema>;
 
 export const updateQuoteSchema = z
-  .object({ price: priceSchema.optional(), message: messageSchema.optional() })
-  .refine((input) => input.price !== undefined || input.message !== undefined, "price or message is required");
+  .object({
+    price: priceSchema.optional(),
+    deliveryHours: deliveryHoursSchema.optional(),
+    message: messageSchema.optional(),
+  })
+  .refine(
+    (input) => input.price !== undefined || input.deliveryHours !== undefined || input.message !== undefined,
+    "price, deliveryHours or message is required",
+  );
 
 export type UpdateQuoteInput = z.infer<typeof updateQuoteSchema>;
 

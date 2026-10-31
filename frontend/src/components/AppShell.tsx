@@ -23,6 +23,7 @@ const NAV: Record<Role, NavItem[]> = {
     { to: '/client/post-job', icon: 'plus', label: 'Post a Job' },
     { to: '/client/wallet', icon: 'wallet', label: 'Wallet' },
     { to: '/client/history', icon: 'history', label: 'History' },
+    { to: '/client/statement', icon: 'briefcase', label: 'Statement' },
     { to: '/client/trust', icon: 'shield', label: 'My Trust' },
   ],
   worker: [
@@ -31,6 +32,7 @@ const NAV: Record<Role, NavItem[]> = {
     { to: '/worker/verification', icon: 'lock', label: 'Verification' },
     { to: '/worker/wallet', icon: 'wallet', label: 'Wallet' },
     { to: '/worker/history', icon: 'history', label: 'History' },
+    { to: '/worker/statement', icon: 'briefcase', label: 'Earnings' },
     { to: '/worker/trust', icon: 'shield', label: 'My Trust' },
   ],
   admin: [
@@ -40,6 +42,7 @@ const NAV: Record<Role, NavItem[]> = {
     { to: '/admin/kyc', icon: 'lock', label: 'Worker KYC' },
     { to: '/admin/users', icon: 'users', label: 'Users' },
     { to: '/admin/payments', icon: 'wallet', label: 'Payments' },
+    { to: '/admin/compliance', icon: 'shield', label: 'Compliance' },
   ],
 }
 

@@ -26,7 +26,12 @@ jest.mock("../src/config/firebase", () => ({
     collection: (name: string) => ({
       doc: (id: string) => refFor(name, id),
       where: (field: string, _op: string, value: unknown) => {
-        const query = { name, field, value, limit: () => query };
+        const matching = () =>
+          [...store.entries()]
+            .filter(([path, data]) => path.startsWith(`${name}/`) && data[field] === value)
+            .map(([path, data]) => ({ id: path.split("/")[1], data: () => data }));
+        // Outside a transaction a query is read with get(); inside one it is passed to tx.get().
+        const query = { name, field, value, limit: () => query, get: async () => ({ docs: matching() }) };
         return query;
       },
     }),
@@ -143,6 +148,48 @@ describe("worker withdrawals (Daraja B2C)", () => {
       amount: 400,
       fromUserId: "worker1",
       toUserId: "mpesa",
+    });
+  });
+
+  describe("tax PIN limit", () => {
+    const rich = () => {
+      store.set("wallets/w1", { ownerId: "worker1", ownerRole: "worker", currency: "KES", balance: 500_000, escrowBalance: 0 });
+    };
+    const past = (status: string, amount: number, createdAt = new Date()) =>
+      store.set(`withdrawals/p${store.size}`, { workerId: "worker1", amount, status, createdAt });
+
+    test("a worker with no tax PIN can withdraw up to the limit", async () => {
+      rich();
+
+      expect((await withdraw({ amount: 100_000 })).status).toBe(202);
+    });
+
+    test("is refused past the limit, and nothing is debited", async () => {
+      rich();
+
+      const res = await withdraw({ amount: 100_001 });
+
+      expect(res.status).toBe(403);
+      expect(res.body.error).toMatch(/tax PIN/i);
+      expect(walletBalance()).toBe(500_000);
+      expect(withdrawals()).toHaveLength(0);
+    });
+
+    test("counts earlier withdrawals this year, but not failed ones or other years", async () => {
+      rich();
+      past("completed", 60_000);
+      past("failed", 50_000);
+      past("completed", 90_000, new Date(Date.UTC(2020, 5, 1)));
+
+      expect((await withdraw({ amount: 40_000 })).status).toBe(202);
+      expect((await withdraw({ amount: 1 })).status).toBe(403);
+    });
+
+    test("a tax PIN on the verified record lifts the limit", async () => {
+      rich();
+      store.set("kyc/worker1", { status: "verified", taxPin: "A123456789Z" });
+
+      expect((await withdraw({ amount: 250_000 })).status).toBe(202);
     });
   });
 

@@ -8,6 +8,7 @@ import AdminKycList from './pages/admin/KycList'
 import Disputes from './pages/admin/Disputes'
 import AdminOverview from './pages/admin/Overview'
 import Payments from './pages/admin/Payments'
+import Compliance from './pages/admin/Compliance'
 import RefundRequests from './pages/admin/RefundRequests'
 import ResolveDispute from './pages/admin/ResolveDispute'
 import Users from './pages/admin/Users'
@@ -22,6 +23,7 @@ import ReleasePayment from './pages/client/ReleasePayment'
 import ReportProblem from './pages/client/ReportProblem'
 import ClientWallet from './pages/client/Wallet'
 import History from './pages/shared/History'
+import Statement from './pages/shared/Statement'
 import Trust from './pages/shared/Trust'
 import WorkerDashboard from './pages/worker/Dashboard'
 import FindJobs from './pages/worker/FindJobs'
@@ -51,6 +53,7 @@ export default function App() {
           <Route path="jobs/:jobId/report" element={<ReportProblem />} />
           <Route path="wallet" element={<ClientWallet />} />
           <Route path="history" element={<History />} />
+          <Route path="statement" element={<Statement />} />
           <Route path="trust" element={<Trust />} />
         </Route>
       </Route>
@@ -63,6 +66,7 @@ export default function App() {
           <Route path="verification" element={<Verification />} />
           <Route path="wallet" element={<Withdraw />} />
           <Route path="history" element={<History />} />
+          <Route path="statement" element={<Statement />} />
           <Route path="trust" element={<Trust />} />
         </Route>
       </Route>
@@ -77,6 +81,7 @@ export default function App() {
           <Route path="kyc/:workerId" element={<AdminKycDetail />} />
           <Route path="users" element={<Users />} />
           <Route path="payments" element={<Payments />} />
+          <Route path="compliance" element={<Compliance />} />
         </Route>
       </Route>
 

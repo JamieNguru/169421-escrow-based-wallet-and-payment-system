@@ -84,6 +84,10 @@ describe("trust score endpoints", () => {
     escrow("j2", "completed", {}, 10);
     escrow("j3", "refunded", {}, 12);
     escrow("j4", "in_escrow", {}, 20); // still open: counts as a job, not as settled
+    // Delivery times the worker promised: 8h, 8h, 10h and 10h.
+    [8, 8, 10, 10].forEach((hours, i) =>
+      store.set(`jobs/j${i + 1}`, { workerId: "w1", clientId: "c1", agreedDeliveryHours: hours }),
+    );
   };
 
   describe("a user with little history", () => {
@@ -131,14 +135,19 @@ describe("trust score endpoints", () => {
       const res = await me("w1", "worker");
 
       expect(res.status).toBe(200);
-      expect(res.body).toEqual({ userId: "w1", role: "worker", trustLevel: "High", probabilities: { High: 0.9, Low: 0.1 } });
+      expect(res.body).toMatchObject({ userId: "w1", role: "worker", trustLevel: "High", probabilities: { High: 0.9, Low: 0.1 } });
+      // The inputs and the settled-job count come back so the score can be explained.
+      expect(res.body.finishedJobs).toBe(3);
+      expect(res.body.features).toEqual(sentBody().features);
       expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:5000/score");
       const { role, features } = sentBody();
       expect(role).toBe("worker");
       // 2 of 3 settled jobs paid out; 1 dispute over 4 funded jobs; jobs submitted after 8, 10, 12 and 20 hours.
       expect(features.job_completion_rate).toBeCloseTo(2 / 3, 5);
       expect(features.dispute_rate).toBeCloseTo(1 / 4, 5);
-      expect(features.response_time_hours).toBeCloseTo((8 + 10 + 12 + 20) / 4, 5);
+      // Delivered after 8, 10, 12 and 20 hours against promises of 8, 8, 10 and 10: 0%, 25%, 20% and 100% over.
+      expect(features.delivery_overrun).toBeCloseTo((0 + 0.25 + 0.2 + 1) / 4, 5);
+      expect(features).not.toHaveProperty("response_time_hours");
     });
 
     it("counts a split payout as completed work", async () => {
@@ -171,6 +180,16 @@ describe("trust score endpoints", () => {
       expect(features.refund_rate).toBeCloseTo(2 / 3, 5); // 1 refund request + 1 dispute they raised, over 3 jobs
       expect(features.escrow_release_time_hours).toBeCloseTo((2 + 6) / 2, 5);
     });
+  });
+
+  it("does not penalise a worker whose jobs carry no delivery promise", async () => {
+    escrow("j1", "completed", {}, 40);
+    escrow("j2", "completed", {}, 40);
+    escrow("j3", "completed", {}, 40);
+
+    await me("w1", "worker");
+
+    expect(sentBody().features.delivery_overrun).toBe(0);
   });
 
   it("lets stored trustStats stand in for history (demo accounts)", async () => {

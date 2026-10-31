@@ -44,6 +44,7 @@ Run locally with `jupyter lab` from this directory after activating the virtual 
 - `evaluate.py`: accuracy, precision, recall, F1, ROC-AUC on the held-out test set. `python -m src.evaluate` scores the saved models.
 - `external_validation.py`: checks trust levels against real fraud labels, holding transaction volume constant (fraud rate falls with volume regardless of trust).
 - `generate_figures.py` / `plots.py`: report figures. `python -m src.generate_figures` regenerates them from the saved models.
+- `realistic.py`: the v2 models the service now serves. v1's tertile labels made "Low" mean only "bottom third of near-perfect users", so v2 labels by fixed thresholds (completion, dispute/refund rate and turnaround each scored 0-1 and weighted) and trains on the real-derived users plus synthetic profiles covering the poor behaviour an escrow platform sees. `python -m src.realistic` trains and saves both. The labels are a rule the forest learns, so its test accuracy shows it reproduces the rule, not that the rule is validated.
 - `predict.py`: inference wrapper used by `app.py`; loads the correct model based on the requesting user's role.
 
 ## API

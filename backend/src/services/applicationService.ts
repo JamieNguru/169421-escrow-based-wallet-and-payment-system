@@ -17,6 +17,8 @@ export interface Application {
   // Applications made before quotes existed have neither.
   price?: number;
   currency?: Currency;
+  // Hours the worker promises to deliver within, from funding. Older applications have none.
+  deliveryHours?: number;
   message?: string;
   status: ApplicationStatus;
   createdAt: Date;
@@ -56,6 +58,7 @@ export async function applyToJob(
       workerId,
       price: input.price,
       currency: job.data()!.currency as Currency,
+      deliveryHours: input.deliveryHours,
       ...(input.message ? { message: input.message } : {}),
       status: "pending" as const,
       createdAt: new Date(),
@@ -85,6 +88,7 @@ export async function updateQuote(
 
     const changes = {
       ...(input.price !== undefined && { price: input.price, currency: job.data()!.currency as Currency }),
+      ...(input.deliveryHours !== undefined && { deliveryHours: input.deliveryHours }),
       ...(input.message !== undefined && { message: input.message }),
     };
     tx.update(applicationRef, changes);
@@ -123,12 +127,15 @@ export async function selectWorker(
     if (jobData.status !== "open") throw new HttpError(409, "Job already has a worker");
     if (!selected.exists) throw new HttpError(404, "Application not found");
 
-    // The chosen quote becomes the job's price and is locked from here on.
+    // The chosen quote becomes the job's price and delivery time, locked from here on.
     const quote = selected.data()!;
-    const agreed =
-      typeof quote.price === "number"
-        ? { agreedPrice: quote.price, agreedCurrency: (quote.currency ?? jobData.currency) as Currency }
-        : {};
+    const agreed = {
+      ...(typeof quote.price === "number" && {
+        agreedPrice: quote.price,
+        agreedCurrency: (quote.currency ?? jobData.currency) as Currency,
+      }),
+      ...(typeof quote.deliveryHours === "number" && { agreedDeliveryHours: quote.deliveryHours }),
+    };
 
     tx.update(jobRef, { status: "assigned", workerId, ...agreed });
     tx.update(selectedRef, { status: "selected" });

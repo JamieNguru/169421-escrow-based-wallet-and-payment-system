@@ -28,8 +28,9 @@ def test_save_and_load_model_round_trip(worker_dataset, tmp_path):
 
 
 def test_predict_trust_worker_returns_level_and_probabilities(trained_models):
+    # The fixture trains v1-style worker models, which are timed on response hours.
     result = predict_trust(
-        "worker", {"job_completion_rate": 0.97, "dispute_rate": 0.01, "response_time_hours": 8.0}
+        "worker", {"job_completion_rate": 0.97, "dispute_rate": 0.01, "response_time_hours": 8.0}, version="v1"
     )
 
     assert result["role"] == "worker"
@@ -51,7 +52,15 @@ def test_predict_trust_client_returns_level_and_probabilities(trained_models):
 def test_predict_trust_ignores_extra_features(trained_models):
     features = {"job_completion_rate": 0.97, "dispute_rate": 0.01, "response_time_hours": 8.0}
 
-    assert predict_trust("worker", {**features, "unused": 123}) == predict_trust("worker", features)
+    assert predict_trust("worker", {**features, "unused": 123}, version="v1") == predict_trust(
+        "worker", features, version="v1"
+    )
+
+
+def test_predict_trust_workers_are_timed_on_delivery_overrun(trained_models):
+    # v2 asks for the overrun, not the response hours v1 used.
+    with pytest.raises(ValueError, match="delivery_overrun"):
+        predict_trust("worker", {"job_completion_rate": 0.97, "dispute_rate": 0.01, "response_time_hours": 8.0})
 
 
 def test_predict_trust_rejects_unknown_role(trained_models):

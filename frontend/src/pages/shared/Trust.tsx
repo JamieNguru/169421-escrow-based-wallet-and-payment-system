@@ -3,7 +3,7 @@ import type { TrustLevel } from '../../api/types'
 import { useAuth } from '../../auth/AuthContext'
 import { Page } from '../../components/AppShell'
 import Icon from '../../components/Icon'
-import { Async, Card, Label, Money, PageHead, SectionTitle, Small } from '../../components/ui'
+import { Async, Card, Chip, Label, Money, PageHead, SectionTitle, Small } from '../../components/ui'
 import { useAsync } from '../../hooks/useAsync'
 
 const TIPS = {
@@ -14,11 +14,82 @@ const TIPS = {
     'Reply to workers’ questions quickly',
   ],
   worker: [
-    'Finish every job you accept',
-    'Reply to clients quickly',
-    'Mark work as done only when it is finished',
     'Solve problems with clients before they become disputes',
+    'Finish every job you accept',
+    'Quote a delivery time you can keep, and deliver within it',
+    'Mark work as done only when it is finished',
   ],
+}
+
+interface Factor {
+  key: string
+  label: string
+  // 'rate' values are 0-1 shares; 'hours' are shown as is; 'overrun' is the share of the promised time a job ran over.
+  unit: 'rate' | 'hours' | 'overrun'
+  higherIsBetter: boolean
+  // Guide values: at or beyond `good` is a strength, at or beyond `fair` is acceptable.
+  good: number
+  fair: number
+  target: string
+}
+
+// What the model looks at, most important first: disputes count the most. The guide values are rough
+// markers for the page, not the model's own cut-offs.
+const FACTORS: Record<'client' | 'worker', Factor[]> = {
+  worker: [
+    { key: 'dispute_rate', label: 'Jobs disputed', unit: 'rate', higherIsBetter: false, good: 0.02, fair: 0.05, target: 'aim for under 2%' },
+    { key: 'job_completion_rate', label: 'Jobs finished', unit: 'rate', higherIsBetter: true, good: 0.97, fair: 0.9, target: 'aim for 97% or more' },
+    { key: 'delivery_overrun', label: 'Delivery vs your promised time', unit: 'overrun', higherIsBetter: false, good: 0.05, fair: 0.3, target: 'deliver within the time you quoted' },
+  ],
+  client: [
+    { key: 'refund_rate', label: 'Refunds and disputes you raised', unit: 'rate', higherIsBetter: false, good: 0.02, fair: 0.05, target: 'aim for under 2%' },
+    { key: 'payment_completion_rate', label: 'Jobs paid out', unit: 'rate', higherIsBetter: true, good: 0.97, fair: 0.9, target: 'aim for 97% or more' },
+    { key: 'escrow_release_time_hours', label: 'Time to release payment', unit: 'hours', higherIsBetter: false, good: 8, fair: 24, target: 'aim for under 8 hours' },
+  ],
+}
+
+const formatValue = (value: number, unit: Factor['unit']) => {
+  if (unit === 'overrun') return value < 0.005 ? 'On time' : `${Math.round(value * 100)}% late`
+  return unit === 'rate' ? `${Math.round(value * 1000) / 10}%` : `${Math.round(value * 10) / 10} h`
+}
+
+function standing(value: number, f: Factor): { tone: 'green' | 'amber' | 'red'; text: string } {
+  const reaches = (limit: number) => (f.higherIsBetter ? value >= limit : value <= limit)
+  if (reaches(f.good)) return { tone: 'green', text: 'Strong' }
+  if (reaches(f.fair)) return { tone: 'amber', text: 'Fair' }
+  return { tone: 'red', text: 'Needs work' }
+}
+
+// Spells out the inputs behind the level so the verdict is not a black box.
+function WhyThisScore({ role, features, finishedJobs }: { role: 'client' | 'worker'; features: Record<string, number>; finishedJobs?: number }) {
+  return (
+    <>
+      <SectionTitle>Why this score</SectionTitle>
+      <Card>
+        <Small>
+          {finishedJobs ? `Based on your ${finishedJobs} finished jobs. ` : ''}
+          The model compares three things, and disputes count the most.
+        </Small>
+        {FACTORS[role].map((f) => {
+          const value = features[f.key]
+          if (value === undefined) return null
+          const { tone, text } = standing(value, f)
+          return (
+            <div key={f.key} className="mt-4 flex items-center justify-between gap-3 border-t border-neutral-200 pt-4">
+              <div>
+                <div className="text-[15px] font-semibold">{f.label}</div>
+                <Small>{f.target}</Small>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-lg font-bold">{formatValue(value, f.unit)}</span>
+                <Chip tone={tone}>{text}</Chip>
+              </div>
+            </div>
+          )
+        })}
+      </Card>
+    </>
+  )
 }
 
 const LEVEL_COLOR: Record<TrustLevel, string> = {
@@ -93,6 +164,8 @@ export default function Trust() {
                 </Card>
               ))}
             </div>
+
+            {score.features && <WhyThisScore role={role} features={score.features} finishedJobs={score.finishedJobs} />}
           </>
           )
         }

@@ -6,7 +6,7 @@ import type { Job, MyApplication } from '../../api/types'
 import Icon from '../../components/Icon'
 import { PhotoGallery } from '../../components/Photos'
 import { Button, Card, ErrorNote, Field, LinkButton, Small, TextArea } from '../../components/ui'
-import { formatDate, formatMoney } from '../../lib/format'
+import { formatDate, formatHours, formatMoney } from '../../lib/format'
 
 // An open job where the worker sends a quote (wireframes 10 and 11). The
 // client's budget is only a guide: the price the worker sends is the one that
@@ -15,6 +15,7 @@ export default function JobTile({ job, verified }: { job: Job; verified: boolean
   const [quote, setQuote] = useState<MyApplication | undefined>(job.myApplication)
   const [editing, setEditing] = useState(false)
   const [price, setPrice] = useState('')
+  const [hours, setHours] = useState('')
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -23,23 +24,26 @@ export default function JobTile({ job, verified }: { job: Job; verified: boolean
 
   const amount = Number(price)
   const validPrice = price !== '' && Number.isFinite(amount) && amount > 0
+  const promisedHours = Number(hours)
+  const validHours = hours !== '' && Number.isFinite(promisedHours) && promisedHours > 0 && promisedHours <= 720
 
   const openPanel = () => {
     setPrice(quote?.price !== undefined ? String(quote.price) : '')
+    setHours(quote?.deliveryHours !== undefined ? String(quote.deliveryHours) : '')
     setMessage(quote?.message ?? '')
     setError(null)
     setEditing(true)
   }
 
   const send = async () => {
-    if (!validPrice) return
+    if (!validPrice || !validHours) return
     setBusy(true)
     setError(null)
     try {
       setQuote(
         quote
-          ? await jobsApi.updateQuote(job.id, { price: amount, message: message.trim() })
-          : await jobsApi.apply(job.id, amount, message.trim() || undefined),
+          ? await jobsApi.updateQuote(job.id, { price: amount, deliveryHours: promisedHours, message: message.trim() })
+          : await jobsApi.apply(job.id, amount, promisedHours, message.trim() || undefined),
       )
       setEditing(false)
     } catch (err) {
@@ -105,9 +109,19 @@ export default function JobTile({ job, verified }: { job: Job; verified: boolean
             onChange={(e) => setPrice(e.target.value)}
             hint="Once the client chooses you, this price is locked and they pay exactly this."
           />
+          <Field
+            label="Delivery time (hours)"
+            type="number"
+            min={1}
+            max={720}
+            step="any"
+            value={hours}
+            onChange={(e) => setHours(e.target.value)}
+            hint="Counted from when the client pays into escrow. Finishing later than this lowers your trust score."
+          />
           <TextArea label="Message (optional)" value={message} maxLength={1000} onChange={(e) => setMessage(e.target.value)} />
           <div className="flex gap-2">
-            <Button small tone="primary" disabled={busy || !validPrice} onClick={() => void send()}>
+            <Button small tone="primary" disabled={busy || !validPrice || !validHours} onClick={() => void send()}>
               {busy ? 'Sending…' : quote ? 'Save quote' : 'Send quote'}
             </Button>
             <Button small disabled={busy} onClick={() => setEditing(false)}>Cancel</Button>
@@ -116,7 +130,9 @@ export default function JobTile({ job, verified }: { job: Job; verified: boolean
       ) : quote ? (
         <div className="mt-3.5 flex items-center justify-between gap-2">
           <Button small icon="check" disabled className="w-auto flex-1 border-brand/30 bg-brand-tint text-brand-ink">
-            {quote.price !== undefined ? `Quote sent: ${formatMoney(quote.price, quote.currency ?? job.currency)}` : 'Applied'}
+            {quote.price !== undefined
+              ? `Quote sent: ${formatMoney(quote.price, quote.currency ?? job.currency)}${quote.deliveryHours !== undefined ? ` in ${formatHours(quote.deliveryHours)}` : ''}`
+              : 'Applied'}
           </Button>
           {quote.status === 'pending' && (
             <Button small className="w-auto px-4" onClick={openPanel}>Edit quote</Button>

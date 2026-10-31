@@ -7,7 +7,7 @@ import { Page } from '../../components/AppShell'
 import { KycDetails, VerifiedBadge } from '../../components/KycSummary'
 import { Async, Banner, Button, Card, Chip, Empty, ErrorNote, PageHead, Select, Small, TrustBadge } from '../../components/ui'
 import { useAsync } from '../../hooks/useAsync'
-import { formatMoney } from '../../lib/format'
+import { formatHours, formatMoney } from '../../lib/format'
 
 type SortBy = 'price' | 'trust'
 
@@ -107,6 +107,7 @@ export default function ChooseWorker() {
                             </Chip>
                           )}
                         </div>
+                        {a.deliveryHours !== undefined && <Chip tone="grey">Delivers in {formatHours(a.deliveryHours)}</Chip>}
                         {a.worker.trustLevel && <TrustBadge level={a.worker.trustLevel} />}
                         <Button
                           small

@@ -7,6 +7,7 @@ import type {
   AdminRefundRequest,
   AdminUser,
   Application,
+  ComplianceFlag,
   Conversion,
   Currency,
   Escrow,
@@ -19,6 +20,7 @@ import type {
   Payment,
   PlatformOverview,
   Role,
+  Statement,
   Transaction,
   TrustScore,
   User,
@@ -48,6 +50,9 @@ export const termsApi = {
 
 export const walletApi = {
   get: () => get<{ wallet: Wallet }>('/api/wallet').then((r) => r.wallet),
+  // A year's earnings (worker) or payments (client), month by month.
+  statement: (year?: number) =>
+    get<{ statement: Statement }>('/api/wallet/statement', year ? { year } : undefined).then((r) => r.statement),
   convert: (from: Currency, to: Currency, amount: number) =>
     get<{ conversion: Conversion }>('/api/wallet/convert', { from, to, amount }).then(
       (r) => r.conversion,
@@ -72,13 +77,14 @@ export const jobsApi = {
     location?: JobLocation
     photos?: string[]
   }) => post<{ job: Job }>('/api/jobs', input).then((r) => r.job),
-  apply: (jobId: string, price: number, message?: string) =>
+  apply: (jobId: string, price: number, deliveryHours: number, message?: string) =>
     post<{ application: MyApplication }>(`/api/jobs/${jobId}/apply`, {
       price,
+      deliveryHours,
       ...(message ? { message } : {}),
     }).then((r) => r.application),
   // Change a pending quote while the job is still open.
-  updateQuote: (jobId: string, input: { price?: number; message?: string }) =>
+  updateQuote: (jobId: string, input: { price?: number; deliveryHours?: number; message?: string }) =>
     patch<{ application: MyApplication }>(`/api/jobs/${jobId}/application`, input).then(
       (r) => r.application,
     ),
@@ -139,6 +145,8 @@ export const kycApi = {
   // null until the worker has submitted something.
   me: () => get<{ kyc: MyKyc | null }>('/api/kyc/me').then((r) => r.kyc),
   submit: (input: KycInput) => post<{ kyc: MyKyc }>('/api/kyc', input).then((r) => r.kyc),
+  // Adds or replaces the tax PIN on a verified record.
+  addTaxPin: (taxPin: string) => post<{ kyc: MyKyc }>('/api/kyc/tax-pin', { taxPin }).then((r) => r.kyc),
 }
 
 export const trustApi = {
@@ -146,6 +154,7 @@ export const trustApi = {
 }
 
 export const adminApi = {
+  compliance: () => get<{ flags: ComplianceFlag[]; thresholdKes: number }>('/api/admin/compliance'),
   overview: () => get<PlatformOverview>('/api/admin/overview'),
   disputes: (status?: 'open' | 'resolved') =>
     get<{ disputes: AdminDispute[]; nextCursor: string | null }>('/api/admin/disputes', {

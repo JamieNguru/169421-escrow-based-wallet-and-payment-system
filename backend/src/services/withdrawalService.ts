@@ -4,6 +4,7 @@ import { getDb } from "../config/firebase";
 import { HttpError } from "../errors";
 import type { WithdrawInput } from "../validation/payments";
 import { normalizePhone } from "../validation/register";
+import { assertTaxPinForPayout } from "./complianceService";
 import { initiateB2C } from "./darajaService";
 
 export interface Withdrawal {
@@ -30,6 +31,8 @@ export async function initiateWithdrawal(workerId: string, input: WithdrawInput)
   const rawPhone = workerSnap.data()?.phone;
   const phone = typeof rawPhone === "string" ? normalizePhone(rawPhone) : null;
   if (!phone) throw new HttpError(409, "No valid phone number on file for payout");
+
+  await assertTaxPinForPayout(workerId, input.amount);
 
   const id = randomUUID();
   const withdrawalRef = db.collection("withdrawals").doc(id);
