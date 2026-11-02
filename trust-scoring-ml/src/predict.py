@@ -15,6 +15,20 @@ V1_FEATURE_COLUMNS_BY_ROLE = {
 FEATURE_COLUMNS_BY_ROLE = REALISTIC_COLUMNS
 
 
+# Trees extrapolate flatly, so an impossible value would still get a confident level.
+RATE_FEATURES = {"job_completion_rate", "dispute_rate", "payment_completion_rate", "refund_rate"}
+
+
+def _validate_ranges(values):
+    """Reject non-numeric, negative, or (for rates) above-1 values instead of scoring them."""
+    for col, value in values.items():
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or value != value:
+            raise ValueError(f"Feature '{col}' must be a number, got {value!r}")
+        upper = 1 if col in RATE_FEATURES else float("inf")
+        if not 0 <= value <= upper:
+            raise ValueError(f"Feature '{col}' must be between 0 and {upper}, got {value}")
+
+
 def predict_trust(role, features, version=REALISTIC_MODEL_VERSION):
     """Predict a trust classification for a single user.
 
@@ -30,6 +44,8 @@ def predict_trust(role, features, version=REALISTIC_MODEL_VERSION):
     missing = [col for col in feature_columns if col not in features]
     if missing:
         raise ValueError(f"Missing required features for role '{role}': {missing}")
+
+    _validate_ranges({col: features[col] for col in feature_columns})
 
     model = load_model(role, version)
     X = pd.DataFrame([{col: features[col] for col in feature_columns}])
