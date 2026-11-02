@@ -127,7 +127,9 @@ def build_dataset(
 
 
 def candidates(seed=SEED):
-    logistic = lambda: make_pipeline(StandardScaler(), LogisticRegression())
+    def logistic():
+        return make_pipeline(StandardScaler(), LogisticRegression())
+
     return {
         "logistic, delivery only": (logistic(), DELIVERY_COLUMNS),
         "forest, delivery only": (

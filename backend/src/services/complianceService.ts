@@ -14,8 +14,6 @@ import { maskTaxPin } from "./kycService";
 
 const DAY_MS = 24 * 3_600_000;
 
-// Start of a calendar year in Kenyan time, as a UTC instant.
-const yearStart = (year: number) => Date.UTC(year, 0, 1) - EAT_OFFSET_MS;
 const yearOf = (date: Date) => new Date(date.getTime() + EAT_OFFSET_MS).getUTCFullYear();
 const monthOf = (date: Date) => new Date(date.getTime() + EAT_OFFSET_MS).getUTCMonth() + 1;
 

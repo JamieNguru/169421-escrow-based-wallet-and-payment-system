@@ -1,6 +1,5 @@
 """Standard report figures for the trust-scoring models: static PNGs for the capstone write-up."""
 
-from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np

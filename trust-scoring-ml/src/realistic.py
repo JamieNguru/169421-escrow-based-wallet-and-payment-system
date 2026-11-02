@@ -18,7 +18,7 @@ from sklearn.model_selection import train_test_split
 
 from src.feature_engineering import add_client_rate_features, add_worker_rate_features
 from src.model_io import save_model
-from src.train import CLIENT_FEATURE_COLUMNS, WORKER_FEATURE_COLUMNS
+from src.train import CLIENT_FEATURE_COLUMNS
 
 REALISTIC_MODEL_VERSION = "v2"
 
