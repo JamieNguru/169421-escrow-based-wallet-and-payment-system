@@ -20,7 +20,7 @@
     "testEnvironment": "node"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
