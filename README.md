@@ -23,7 +23,9 @@ Digital labour platforms in East Africa rely on informal mobile-money transfers 
 - [Setup guide](docs/setup-guide.md): clone to a running system
 - [Architecture](docs/architecture.md): components, escrow lifecycle, data model, key flows, security
 - [Module map](docs/modules.md): where each module lives in the code
-- [Backend API reference](backend/README.md)
+- [API specification](docs/openapi.yaml): OpenAPI 3.1 for every public endpoint
+- [Postman collection](docs/postman/): import it to try the API
+- [Backend API reference](backend/README.md): behaviour and setup notes per feature
 - [Manual test pass](docs/manual-test-pass.md)
 
 ## Modules
