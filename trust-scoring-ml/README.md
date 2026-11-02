@@ -8,9 +8,11 @@ Workers are assessed on job completion rate, dispute frequency, and response tim
 
 ```
 python -m venv .venv
-.venv\Scripts\activate
+.venv\Scripts\activate          # macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
 ```
+
+Trained models (`models/*.joblib`) are git-ignored. Train the served v2 models with `python -m src.realistic`, then start the service with `python app.py` (port 5000). `Dockerfile` and `requirements-deploy.txt` are for container deployment (port 7860). See the [setup guide](../docs/setup-guide.md) for the whole system.
 
 ## Data
 
