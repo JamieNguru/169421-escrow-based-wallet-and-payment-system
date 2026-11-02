@@ -71,3 +71,17 @@ def test_predict_trust_rejects_unknown_role(trained_models):
 def test_predict_trust_rejects_missing_features(trained_models):
     with pytest.raises(ValueError, match="dispute_rate"):
         predict_trust("worker", {"job_completion_rate": 0.97, "response_time_hours": 8.0})
+
+
+@pytest.mark.parametrize(
+    "features",
+    [
+        {"payment_completion_rate": 3.0, "refund_rate": 0.02, "escrow_release_time_hours": 12.0},
+        {"payment_completion_rate": 0.9, "refund_rate": -0.1, "escrow_release_time_hours": 12.0},
+        {"payment_completion_rate": 0.9, "refund_rate": 0.02, "escrow_release_time_hours": -1.0},
+        {"payment_completion_rate": "high", "refund_rate": 0.02, "escrow_release_time_hours": 12.0},
+    ],
+)
+def test_predict_trust_rejects_out_of_range_features(trained_models, features):
+    with pytest.raises(ValueError):
+        predict_trust("client", features)

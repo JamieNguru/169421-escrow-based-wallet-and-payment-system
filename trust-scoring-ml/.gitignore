@@ -12,6 +12,7 @@ __pycache__/
 data/*.csv
 data/*.json
 data/processed/
+data/olist/
 
 # Trained models
 models/*.joblib
