@@ -25,8 +25,10 @@ function JobCard({ job }: { job: MyJob }) {
     status = <Chip tone="solid">Work is done</Chip>
     action = <LinkButton to={`/client/jobs/${job.id}/release`} small tone="primary">Check &amp; pay worker</LinkButton>
   } else if (job.escrowStatus === 'in_escrow') {
-    status = <Chip tone="amber">In progress</Chip>
-    footer = `Worker: ${job.counterpartyName ?? 'chosen'} · ${formatJobPrice(job)} held safely`
+    status = job.refundStatus === 'pending' ? <Chip tone="amber">Refund requested</Chip> : <Chip tone="amber">In progress</Chip>
+    footer = job.refundStatus === 'pending'
+      ? 'An admin is reviewing your refund request. The money stays held safely.'
+      : `Worker: ${job.counterpartyName ?? 'chosen'} · ${formatJobPrice(job)} held safely`
   } else if (job.escrowStatus === 'disputed') {
     status = <Chip tone="red">Under review</Chip>
     footer = 'An admin is looking at this job'

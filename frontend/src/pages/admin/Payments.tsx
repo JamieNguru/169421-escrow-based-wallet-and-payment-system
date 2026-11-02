@@ -29,7 +29,7 @@ export default function Payments() {
             <Card>
               <Label>Held in escrow</Label>
               <Money size="text-[26px]">{amountsLabel(o.escrows.amounts.held)}</Money>
-              <Small>{plural(o.escrows.byStatus.in_escrow ?? 0, 'funded job')}</Small>
+              <Small>{plural((o.escrows.byStatus.in_escrow ?? 0) + (o.escrows.byStatus.work_submitted ?? 0) + (o.escrows.byStatus.disputed ?? 0), 'job')}</Small>
             </Card>
             <Card>
               <Label>Released</Label>
