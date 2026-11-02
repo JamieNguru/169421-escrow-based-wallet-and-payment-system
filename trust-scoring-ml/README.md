@@ -55,4 +55,49 @@ Run locally with `jupyter lab` from this directory after activating the virtual 
 
 ## API
 
-`python app.py` serves `GET /health` and `POST /score` (body: `{"role": "worker" | "client", "features": {...}}`), returning the trust level and per-level probabilities.
+`python app.py` serves two endpoints (port 5000 locally, 7860 in the container). There is no authentication: the service is internal and only the backend calls it, through `ML_SERVICE_URL`.
+
+### `GET /health`
+
+Returns `200` with `{ "status": "ok" }`.
+
+### `POST /score`
+
+Scores one user with the model for their role.
+
+```json
+{
+  "role": "worker",
+  "features": { "job_completion_rate": 0.92, "dispute_rate": 0.04, "delivery_overrun": 0.1 }
+}
+```
+
+Returns `200` with the predicted level and the probability of each level:
+
+```json
+{
+  "role": "worker",
+  "trust_level": "High",
+  "probabilities": { "High": 0.81, "Low": 0.02, "Medium": 0.17 }
+}
+```
+
+`features` must contain every feature for the role, and nothing else is read:
+
+| Role | Feature | Range | Meaning |
+|---|---|---|---|
+| `worker` | `job_completion_rate` | 0 to 1 | Settled jobs paid out over all settled jobs |
+| `worker` | `dispute_rate` | 0 to 1 | Disputes on the worker's jobs over their funded jobs |
+| `worker` | `delivery_overrun` | 0 or more | How far past the promised delivery time jobs ran, as a share of that time (0 when on time) |
+| `client` | `payment_completion_rate` | 0 to 1 | Settled jobs paid out over all settled jobs |
+| `client` | `refund_rate` | 0 to 1 | Refund requests plus disputes the client raised, over their funded jobs |
+| `client` | `escrow_release_time_hours` | 0 or more | Average hours from work submitted to the client releasing |
+
+Values must be numbers; booleans, `NaN` and out-of-range values are rejected rather than scored.
+
+| Status | Cause |
+|---|---|
+| `400` | Body is not JSON, `role` or `features` is missing, `role` is not `worker` or `client`, a feature is missing, or a feature is not a number in range |
+| `503` | No trained model file exists for the role (train with `python -m src.realistic`) |
+
+The backend works the feature values out from a user's job history (`backend/src/services/trustScoreService.ts`), gives the call a 5-second timeout, and turns any failure from this service into a `503` for its own caller. Users with fewer than 3 settled jobs are never sent here; the backend reports them as `New`.
