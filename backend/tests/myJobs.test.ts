@@ -85,6 +85,17 @@ describe("GET /api/jobs/mine", () => {
     expect(res.body.jobs[0]).toMatchObject({ id: "job2", counterpartyName: "David", escrowStatus: "in_escrow" });
   });
 
+  test("a client sees the status of a refund request on their job, a worker does not", async () => {
+    store.set("refundRequests/job2", { status: "pending", clientId: "client1", workerId: "worker1" });
+
+    const asClient = await mine(tokenFor("client1", "client"));
+    expect(asClient.body.jobs[0]).toMatchObject({ id: "job2", refundStatus: "pending" });
+    expect(asClient.body.jobs[1].refundStatus).toBeUndefined();
+
+    const asWorker = await mine(tokenFor("worker1", "worker"));
+    expect(asWorker.body.jobs[0].refundStatus).toBeUndefined();
+  });
+
   test("403 for admins", async () => {
     expect((await mine(tokenFor("admin1", "admin"))).status).toBe(403);
   });

@@ -131,6 +131,8 @@ export interface MyJob extends Job {
   // Clients see who they hired and how many applied; workers see the client.
   counterpartyName?: string;
   applicantCount?: number;
+  // Set on a client's job once they have asked for a refund: "pending" or "approved".
+  refundStatus?: string;
 }
 
 // The caller's own jobs, newest first: jobs a client posted, or jobs assigned to a worker.
@@ -149,8 +151,9 @@ export async function listMyJobs(userId: string, role: "client" | "worker", limi
       const job: MyJob = listed(doc.id, data);
 
       const counterpartyId = role === "client" ? data.workerId : data.clientId;
-      const [escrow, counterparty, applications] = await Promise.all([
+      const [escrow, refundRequest, counterparty, applications] = await Promise.all([
         db.collection("escrows").doc(doc.id).get(),
+        role === "client" ? db.collection("refundRequests").doc(doc.id).get() : undefined,
         counterpartyId
           ? db.collection(role === "client" ? "workers" : "clients").doc(counterpartyId).get()
           : undefined,
@@ -160,6 +163,7 @@ export async function listMyJobs(userId: string, role: "client" | "worker", limi
       ]);
 
       if (escrow.exists) job.escrowStatus = escrow.data()!.status;
+      if (refundRequest?.exists) job.refundStatus = refundRequest.data()!.status;
       if (counterparty?.exists) job.counterpartyName = counterparty.data()!.name;
       if (applications) job.applicantCount = applications.docs.length;
       return job;

@@ -98,6 +98,7 @@ export interface MyJob extends Job {
   escrowStatus?: EscrowStatus
   counterpartyName?: string
   applicantCount?: number
+  refundStatus?: 'pending' | 'approved'
 }
 
 export interface Application {

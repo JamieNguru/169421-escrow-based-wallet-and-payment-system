@@ -29,7 +29,7 @@ export default function PostJob() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  const useMyLocation = async () => {
+  const locateMe = async () => {
     setLocating(true)
     setError(null)
     try {
@@ -70,7 +70,7 @@ export default function PostJob() {
           <div>
             <Field label="Location" value={place} onChange={(e) => setPlace(e.target.value)} maxLength={120} placeholder="Kilimani, Nairobi" />
             <div className="mt-2 flex flex-wrap items-center gap-3 text-[13px] text-muted">
-              <button type="button" disabled={locating} onClick={() => void useMyLocation()} className="font-bold text-brand-ink disabled:opacity-50">
+              <button type="button" disabled={locating} onClick={() => void locateMe()} className="font-bold text-brand-ink disabled:opacity-50">
                 {locating ? 'Finding you…' : coords ? 'Update my position' : 'Use my current position'}
               </button>
               {coords ? (

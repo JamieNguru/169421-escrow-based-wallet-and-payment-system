@@ -118,9 +118,10 @@ Test data: client `client1`, worker `worker1`, admin from the seed. Use a fresh 
 | **J11, withdrawal shown as "Sent"** when only requested. | Relabelled "Requested" in the worker list and History. |
 | **Admin payments** labelled top-ups "Escrow payment". | Fixed and checked. |
 | **D3, workers could not raise a dispute in the UI.** The worker dashboard also listed only one job in progress. | Added a worker report screen and link; the dashboard now lists every job in progress. Checked end to end. Nav highlight fixed by using `/worker/report/:jobId`. |
-| **D4, no sign of a pending refund request** on the client dashboard. | Not fixed. |
-| Overview card "Held in escrow KES 600" counts "1 funded job" while two jobs were held. | Not investigated. |
-| `PostJob.tsx` fails lint (`useMyLocation` called inside a callback). | Existing, not changed. |
+| **D4, no sign of a pending refund request** on the client dashboard. | Fixed in the bug fixing pass (#47). `/api/jobs/mine` returns `refundStatus` for a client's jobs and the dashboard shows "Refund requested". Covered by a backend test; not re-checked in the browser. |
+| Overview card "Held in escrow KES 600" counts "1 funded job" while two jobs were held. | Fixed (#47). The amount includes work submitted and disputed jobs but the count only used `in_escrow`. The count now uses the same three statuses. Not re-checked in the browser. |
+| `PostJob.tsx` fails lint (`useMyLocation` called inside a callback). | Fixed (#47). Renamed to `locateMe`; lint reports no errors. |
+| X5, large or non-image file as a photo. | Checked in code (#47). The upload picker rejects non-images with "Choose an image file.", images are resized before sending, and the backend accepts only PNG, JPEG or WebP data URLs under a 2 MB body limit. Not tried in the browser. |
 
 ## 10. Optional: real Daraja sandbox
 
