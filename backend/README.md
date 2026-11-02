@@ -580,7 +580,12 @@ npm test -- e2e
 
 - `src/app.ts`: builds the Express app (used by both the server and the tests)
 - `src/server.ts`: loads `.env` and starts listening
-- `src/config/`: external service setup (Firestore)
+- `src/config/`: external service setup (Firestore, JWT, Daraja, ML service, exchange rates, terms, compliance)
 - `src/routes/`: route handlers, one file per resource
-- `src/middleware/`: shared middleware (auth and role checks, 404 and error handling)
-- `tests/`: Jest + Supertest tests
+- `src/services/`: business logic (escrow and its state machine, wallets, payments, jobs, KYC, trust score)
+- `src/middleware/`: shared middleware (auth and role checks, terms gate, 404 and error handling)
+- `src/validation/`: zod request schemas
+- `src/scripts/`: seed and backfill scripts
+- `tests/`: Jest + Supertest tests, plus `tests/e2e/`
+
+For the big picture see [`../docs/architecture.md`](../docs/architecture.md).

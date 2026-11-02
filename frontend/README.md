@@ -1,6 +1,6 @@
 # Escrow Wallet frontend
 
-React + TypeScript + Vite single-page app for the escrow wallet platform. It has three role-based areas (Client, Worker, Admin) built from the 18 wireframes, and talks to the Express backend in [`../backend`](../backend).
+React + TypeScript + Vite single-page app for the escrow wallet platform. It has three role-based areas (Client, Worker, Admin) built from the wireframes, and talks to the Express backend in [`../backend`](../backend).
 
 ## Run it
 
@@ -29,10 +29,10 @@ npm run lint       # oxlint
 
 | Role | Screens |
 |---|---|
-| Public | Login, Register |
+| Public | Login, Register, Terms of service |
 | Client | Dashboard, Post a Job, Choose a Worker, Pay into escrow (from the wallet or with an M-Pesa prompt), Release payment, Report a problem, Wallet (with a top-up), History, My Trust |
 | Worker | Dashboard (every job in progress, each with "Report a problem"), Find Jobs, Verification, Report a problem, Withdraw to M-Pesa, History, My Trust |
-| Admin | Overview, Disputes, Resolve dispute, Users, Payments |
+| Admin | Overview, Disputes, Resolve dispute, Refund requests, Users, Payments, Identity checks (KYC list and detail), Compliance |
 
 ## Where the app differs from the wireframes
 
