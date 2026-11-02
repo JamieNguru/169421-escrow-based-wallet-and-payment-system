@@ -1,0 +1,1805 @@
+openapi: 3.1.0
+info:
+  title: Escrow Wallet API
+  version: 1.0.0
+  description: |
+    REST API for the escrow-based wallet and payment system. Clients post jobs and fund escrow, workers quote and deliver, and admins resolve disputes and refunds.
+
+    This spec covers the public endpoints under `/api`. The M-Pesa (Daraja) server-to-server callbacks are not listed; they are described in `backend/README.md`. The internal trust-scoring service is documented in `trust-scoring-ml/README.md`.
+
+    ## Authentication
+
+    Sign in with `POST /api/auth/login`. It returns a JWT (HS256) whose payload is `{ sub, role }`, valid for `JWT_EXPIRES_IN` (default 1 day). Send it on every other request as `Authorization: Bearer <token>`. Admins sign in the same way; they are created with `npm run seed:admin` and cannot self-register.
+
+    | Role | Can do |
+    |---|---|
+    | `client` | Post jobs, review applications, select a worker, pay and fund escrow, confirm work, request refunds, raise disputes |
+    | `worker` | Complete KYC, browse jobs, apply and edit quotes, mark work complete, raise disputes, withdraw to M-Pesa |
+    | `admin` | Process refunds, resolve disputes, manage users, view platform monitoring, compliance flags and KYC for disputed workers |
+
+    Each operation below states the role it needs. A missing, malformed or expired token returns `401`. A valid token with the wrong role returns `403`.
+
+    ## Terms gate
+
+    Operations marked **Requires accepted terms** return `403` until the user has accepted the current terms version (`GET /api/terms`, then `POST /api/auth/accept-terms`). Admins are exempt. Login returns `termsAccepted` so the client knows whether to prompt.
+
+    ## Errors
+
+    Every error has the same shape, `{ "error": "<message>" }`.
+
+    | Status | Meaning |
+    |---|---|
+    | `400` | Invalid input. The message lists the failed checks, separated by `; ` |
+    | `401` | Missing, invalid or expired token, or wrong login credentials |
+    | `402` | Wallet balance too low |
+    | `403` | Wrong role, not the owner of the resource, terms not accepted, or account suspended |
+    | `404` | Resource not found, or unknown route (`Route not found: METHOD url`) |
+    | `409` | Conflict with the current state, for example funding an escrow twice |
+    | `502` / `503` | An upstream service failed: M-Pesa (Daraja), the exchange-rate feed or the trust-scoring service |
+    | `500` | `Internal server error` |
+
+    ## Pagination
+
+    List endpoints return a page of results plus `nextCursor`, an ISO date-time that is `null` on the last page. Pass it back as `cursor` for the next page. `GET /api/admin/users` is the exception: it uses `startAfter` and omits `nextCursor` on the last page.
+servers:
+  - url: http://localhost:4000
+    description: Local development
+security:
+  - bearerAuth: []
+tags:
+  - name: Meta
+    description: Health check and terms version
+  - name: Auth
+    description: Registration, login and terms acceptance
+  - name: Jobs
+    description: Posting, browsing, quoting and selecting a worker
+  - name: Escrow
+    description: Funding, delivery, refunds and disputes
+  - name: Payments
+    description: M-Pesa STK Push, wallet top-up and withdrawals
+  - name: Wallet
+    description: Balance, yearly statement and currency conversion
+  - name: Transactions
+    description: Ledger history
+  - name: Trust score
+    description: Trust level from the ML service
+  - name: KYC
+    description: Worker identity verification and tax PIN
+  - name: Admin
+    description: Platform monitoring and moderation (admin only)
+
+paths:
+  /api/health:
+    get:
+      tags: [Meta]
+      summary: Health check
+      security: []
+      responses:
+        "200":
+          description: The API is up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+  /api/terms:
+    get:
+      tags: [Meta]
+      summary: Current terms of service version
+      security: []
+      responses:
+        "200":
+          description: The current terms version and where to read it
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  version: { type: string, example: 2026-10-v1 }
+                  url: { type: string }
+
+  /api/auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a client or worker
+      description: Admins cannot self-register. The phone is stored as `254XXXXXXXXX`. Email and phone must be unique across both roles.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RegisterRequest" }
+            example:
+              name: Jane Doe
+              email: jane@example.com
+              phone: "0712345678"
+              password: at-least-8-chars
+              role: client
+              acceptTerms: true
+      responses:
+        "201":
+          description: Account created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthUser" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Sign in and get a JWT
+      description: |
+        `identifier` is an email or a Kenyan mobile number (`0712345678`, `+254712345678`, ...). The older field name `email` is still accepted in its place. A wrong email, phone or password returns the same `401`. A suspended account returns `403` after the password check.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginRequest" }
+            example:
+              identifier: jane@example.com
+              password: at-least-8-chars
+      responses:
+        "200":
+          description: Signed in
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string, description: JWT to send as a Bearer token }
+                  user: { $ref: "#/components/schemas/AuthUser" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/auth/accept-terms:
+    post:
+      tags: [Auth]
+      summary: Accept the current terms version
+      description: Takes no body. Admins get `403`.
+      responses:
+        "200":
+          description: Terms accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  termsAccepted: { type: boolean, example: true }
+                  termsVersion: { type: string, example: 2026-10-v1 }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/jobs:
+    post:
+      tags: [Jobs]
+      summary: Post a job
+      description: "**Role:** client. **Requires accepted terms.** Photos are stored inside the job document, so the body can be up to 2 MB."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PostJobRequest" }
+            example:
+              title: Fix my sink
+              description: Leaking kitchen tap
+              budget: 1500
+              currency: KES
+              location: { label: "Kilimani, Nairobi", lat: -1.2921, lng: 36.7872 }
+      responses:
+        "201":
+          description: Job created with status `open`
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job: { $ref: "#/components/schemas/Job" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    get:
+      tags: [Jobs]
+      summary: Browse open jobs
+      description: "**Role:** worker. Newest first. Send `lat` and `lng` together to get `distanceKm` on jobs that have coordinates. Each job the worker has applied to carries `myApplication`."
+      parameters:
+        - $ref: "#/components/parameters/Limit20"
+        - $ref: "#/components/parameters/Cursor"
+        - name: currency
+          in: query
+          schema: { $ref: "#/components/schemas/Currency" }
+        - name: lat
+          in: query
+          description: The worker's latitude. Must be sent with `lng`.
+          schema: { type: number, minimum: -90, maximum: 90 }
+        - name: lng
+          in: query
+          description: The worker's longitude. Must be sent with `lat`.
+          schema: { type: number, minimum: -180, maximum: 180 }
+      responses:
+        "200":
+          description: A page of open jobs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobs:
+                    type: array
+                    items: { $ref: "#/components/schemas/Job" }
+                  nextCursor: { $ref: "#/components/schemas/NextCursor" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/jobs/mine:
+    get:
+      tags: [Jobs]
+      summary: My jobs
+      description: "**Role:** client or worker. A client's posted jobs or a worker's assigned jobs, newest first. Each job carries `escrowStatus` once funded and `counterpartyName`. A client's open jobs also carry `applicantCount`."
+      responses:
+        "200":
+          description: The caller's jobs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobs:
+                    type: array
+                    items: { $ref: "#/components/schemas/Job" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/jobs/{jobId}:
+    get:
+      tags: [Jobs]
+      summary: Get a job with its photos
+      description: "**Role:** any signed-in user."
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+      responses:
+        "200":
+          description: The job, including `photos`
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job: { $ref: "#/components/schemas/Job" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/jobs/{jobId}/apply:
+    post:
+      tags: [Jobs]
+      summary: Apply for a job with a quote
+      description: "**Role:** worker, and the worker must be KYC-verified. A worker can apply to a job once. The quote currency is copied from the job."
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ApplyRequest" }
+            example:
+              price: 1200
+              deliveryHours: 48
+              message: I can start tomorrow
+      responses:
+        "201":
+          description: Application recorded with status `pending`
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  application: { $ref: "#/components/schemas/Application" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /api/jobs/{jobId}/application:
+    patch:
+      tags: [Jobs]
+      summary: Edit my quote
+      description: "**Role:** worker. Only while the application is `pending` and the job is `open`. At least one field is required."
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateQuoteRequest" }
+            example:
+              price: 1000
+      responses:
+        "200":
+          description: The updated application
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  application: { $ref: "#/components/schemas/Application" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /api/jobs/{jobId}/applications:
+    get:
+      tags: [Jobs]
+      summary: Review applications for my job
+      description: "**Role:** client who owns the job. Newest first. Each application includes the applicant's name, email, KYC summary and `trustLevel` (left out if the ML service cannot score the worker)."
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+        - $ref: "#/components/parameters/Limit20"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: A page of applications
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  applications:
+                    type: array
+                    items: { $ref: "#/components/schemas/ApplicationWithWorker" }
+                  nextCursor: { $ref: "#/components/schemas/NextCursor" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/jobs/{jobId}/select:
+    post:
+      tags: [Jobs]
+      summary: Select a worker
+      description: "**Role:** client who owns the job. In one transaction the job becomes `assigned`, the chosen application `selected` and the others `rejected`. The chosen quote is copied onto the job as `agreedPrice` and `agreedCurrency`, which locks the price."
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [workerId]
+              properties:
+                workerId: { type: string, example: worker1 }
+            example:
+              workerId: worker1
+      responses:
+        "200":
+          description: The assigned job and the selected application
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job: { $ref: "#/components/schemas/Job" }
+                  application: { $ref: "#/components/schemas/Application" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /api/escrow/fund:
+    post:
+      tags: [Escrow]
+      summary: Fund escrow from the wallet balance
+      description: |
+        **Role:** client who owns the job. **Requires accepted terms.**
+
+        Moves the amount due from the client's wallet into escrow. The server works out the amount from the job's agreed price (converted to whole KES if the job is in another currency). `amount` is optional; if you send one that differs, the request fails with `409`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [jobId, workerId]
+              properties:
+                jobId: { type: string, example: job1 }
+                workerId: { type: string, example: worker1 }
+                amount: { type: number, exclusiveMinimum: 0 }
+            example:
+              jobId: job1
+              workerId: worker1
+      responses:
+        "201":
+          description: Escrow created with status `in_escrow`
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  escrow: { $ref: "#/components/schemas/Escrow" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/PaymentRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /api/escrow/{jobId}:
+    get:
+      tags: [Escrow]
+      summary: View escrow status
+      description: "**Role:** the escrow's client or assigned worker, or any admin."
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+      responses:
+        "200":
+          description: The escrow
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  escrow: { $ref: "#/components/schemas/Escrow" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/escrow/{jobId}/complete:
+    post:
+      tags: [Escrow]
+      summary: Mark the work complete
+      description: "**Role:** the assigned worker. Takes no body. Sets the escrow to `work_submitted`. No money moves."
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+      responses:
+        "200":
+          description: The updated escrow
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  escrow: { $ref: "#/components/schemas/Escrow" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /api/escrow/{jobId}/confirm:
+    post:
+      tags: [Escrow]
+      summary: Confirm the work and release payment
+      description: "**Role:** the client who funded the job. Takes no body. Moves the amount from the client's escrow balance to the worker's balance and sets the escrow to `completed`. Returns `409` if the worker has not submitted work yet."
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+      responses:
+        "200":
+          description: The completed escrow
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  escrow: { $ref: "#/components/schemas/Escrow" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /api/escrow/{jobId}/refund-request:
+    post:
+      tags: [Escrow]
+      summary: Request a refund
+      description: "**Role:** the client who funded the job. The escrow must be `in_escrow` or `work_submitted`, and each job can have one request. No money moves until an admin processes it."
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 1000 }
+            example:
+              reason: The work was not started.
+      responses:
+        "201":
+          description: Refund request stored with status `pending`
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  refundRequest: { $ref: "#/components/schemas/RefundRequest" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /api/escrow/{jobId}/process-refund:
+    post:
+      tags: [Escrow]
+      summary: Approve a pending refund
+      description: "**Role:** admin. Takes no body. Returns the escrowed money to the client's balance and sets the escrow to `refunded`. A request can only be processed once."
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+      responses:
+        "200":
+          description: The approved refund request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  refundRequest: { $ref: "#/components/schemas/RefundRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /api/escrow/{jobId}/dispute:
+    post:
+      tags: [Escrow]
+      summary: Raise a dispute
+      description: "**Role:** the escrow's client or assigned worker. **Requires accepted terms.** The escrow must be `in_escrow` or `work_submitted`, so a job can be disputed once. Photos are returned only to admins."
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 1000 }
+                photos: { $ref: "#/components/schemas/Photos" }
+            example:
+              reason: The delivered work does not match the job description.
+      responses:
+        "201":
+          description: Dispute stored with status `open`
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dispute: { $ref: "#/components/schemas/Dispute" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /api/escrow/{jobId}/resolve-dispute:
+    post:
+      tags: [Escrow]
+      summary: Resolve a dispute
+      description: |
+        **Role:** admin.
+
+        - `release` pays the worker and sets the escrow to `completed`.
+        - `refund` returns the money to the client and sets the escrow to `refunded`.
+        - `split` returns `clientAmount` to the client and pays the worker the rest, and sets the escrow to `split`. `clientAmount` is required and must be above 0 and below the escrow amount.
+
+        A dispute can only be resolved once.
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision, resolution]
+              properties:
+                decision: { type: string, enum: [release, refund, split] }
+                clientAmount:
+                  type: number
+                  exclusiveMinimum: 0
+                  description: Required when `decision` is `split`.
+                resolution: { type: string, minLength: 1, maxLength: 1000 }
+            example:
+              decision: split
+              clientAmount: 200
+              resolution: Work was partly done; splitting the amount.
+      responses:
+        "200":
+          description: The resolved dispute
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dispute: { $ref: "#/components/schemas/Dispute" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /api/payments/stk-push:
+    post:
+      tags: [Payments]
+      summary: Pay for a job with M-Pesa STK Push
+      description: |
+        **Role:** client. **Requires accepted terms.** Prompts the phone and stores a `pending` payment. On success the money is credited to the wallet and moved into the job's escrow. Poll `GET /api/payments/{checkoutRequestId}` until the status leaves `pending`.
+
+        The amount is worked out by the server; an optional `amount` that differs gets `409`. `phone` falls back to the number saved at registration. With `DARAJA_SIMULATE=true` (ignored in production) no request goes to Daraja and the response has `simulated: true`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [jobId, workerId]
+              properties:
+                jobId: { type: string, example: job1 }
+                workerId: { type: string, example: worker1 }
+                amount: { type: integer, exclusiveMinimum: 0, description: Whole KES. Optional; refused with 409 if it differs from the amount due. }
+                phone: { $ref: "#/components/schemas/KenyanPhone" }
+            example:
+              jobId: job1
+              workerId: worker1
+              phone: "0708374149"
+      responses:
+        "202": { $ref: "#/components/responses/StkAccepted" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "502": { $ref: "#/components/responses/ServiceUnavailable" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /api/payments/top-up:
+    post:
+      tags: [Payments]
+      summary: Top up the wallet with M-Pesa
+      description: "**Role:** client. **Requires accepted terms.** Whole KES from 1 to 250,000. Responds the same way as `stk-push`, with `kind: top_up`."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount]
+              properties:
+                amount: { type: integer, minimum: 1, maximum: 250000 }
+                phone: { $ref: "#/components/schemas/KenyanPhone" }
+            example:
+              amount: 1000
+              phone: "0708374149"
+      responses:
+        "202": { $ref: "#/components/responses/StkAccepted" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "502": { $ref: "#/components/responses/ServiceUnavailable" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /api/payments/withdraw:
+    post:
+      tags: [Payments]
+      summary: Withdraw wallet balance to M-Pesa
+      description: |
+        **Role:** worker. **Requires accepted terms.** Pays out to the phone saved at registration through Daraja B2C. The balance is debited straight away and refunded if the payout fails. A worker with no tax PIN is limited to `TAX_PIN_THRESHOLD_KES` (default 100,000) of non-failed withdrawals per calendar year; going past it returns `403` and debits nothing.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount]
+              properties:
+                amount: { type: integer, exclusiveMinimum: 0, description: Whole KES }
+            example:
+              amount: 400
+      responses:
+        "202":
+          description: Withdrawal started with status `pending`
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  withdrawal: { $ref: "#/components/schemas/Withdrawal" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/PaymentRequired" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "502": { $ref: "#/components/responses/ServiceUnavailable" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /api/payments/{checkoutRequestId}:
+    get:
+      tags: [Payments]
+      summary: Check a payment
+      description: "**Role:** client who owns the payment."
+      parameters:
+        - $ref: "#/components/parameters/CheckoutRequestId"
+      responses:
+        "200":
+          description: The payment
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  payment: { $ref: "#/components/schemas/Payment" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/payments/{checkoutRequestId}/simulate:
+    post:
+      tags: [Payments]
+      summary: Settle a simulated payment (test mode only)
+      description: "**Role:** client. Settles a payment the way a Daraja callback would. Returns `404` outside test mode (`DARAJA_SIMULATE=true`) and `409` for a real payment."
+      parameters:
+        - $ref: "#/components/parameters/CheckoutRequestId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [outcome]
+              properties:
+                outcome: { type: string, enum: [success, failure] }
+            example:
+              outcome: success
+      responses:
+        "200":
+          description: The settled payment
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  payment: { $ref: "#/components/schemas/Payment" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /api/wallet:
+    get:
+      tags: [Wallet]
+      summary: My wallet
+      description: "**Role:** client or worker."
+      responses:
+        "200":
+          description: The caller's wallet
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  wallet: { $ref: "#/components/schemas/Wallet" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/wallet/statement:
+    get:
+      tags: [Wallet]
+      summary: Yearly statement
+      description: "**Role:** client or worker. A year's earnings (worker) or payments (client), month by month, built from the ledger. Year boundaries follow Kenyan time (UTC+3). Workers get `received` and `withdrawn` per month and a `tax` block; clients get `paid` and `refunded`."
+      parameters:
+        - name: year
+          in: query
+          description: Defaults to the current year.
+          schema: { type: integer, minimum: 2020, maximum: 2100 }
+      responses:
+        "200":
+          description: The statement
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  statement: { $ref: "#/components/schemas/Statement" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/wallet/convert:
+    get:
+      tags: [Wallet]
+      summary: Convert between currencies
+      description: "**Role:** any signed-in user. A quote only; nothing in the wallet or ledger changes. Rates are cached for an hour and stale rates are served if a refresh fails."
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema: { $ref: "#/components/schemas/Currency" }
+        - name: to
+          in: query
+          required: true
+          schema: { $ref: "#/components/schemas/Currency" }
+        - name: amount
+          in: query
+          required: true
+          schema: { type: number, exclusiveMinimum: 0 }
+      responses:
+        "200":
+          description: The quote
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  conversion: { $ref: "#/components/schemas/Conversion" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /api/transactions:
+    get:
+      tags: [Transactions]
+      summary: Ledger history
+      description: "**Role:** any signed-in user. Entries where the caller is the sender or recipient, newest first. An admin can pass `userId` to view anyone's history; anyone else passing it gets `403`."
+      parameters:
+        - $ref: "#/components/parameters/Limit20"
+        - $ref: "#/components/parameters/Cursor"
+        - name: userId
+          in: query
+          description: Admin only. Whose history to return.
+          schema: { type: string }
+      responses:
+        "200":
+          description: A page of ledger entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  transactions:
+                    type: array
+                    items: { $ref: "#/components/schemas/Transaction" }
+                  nextCursor: { $ref: "#/components/schemas/NextCursor" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/trust-score/me:
+    get:
+      tags: [Trust score]
+      summary: My trust score
+      description: "**Role:** client or worker. Users with fewer than 3 settled jobs get `trustLevel: New` and the ML service is not called."
+      responses:
+        "200":
+          description: The caller's score
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TrustScore" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /api/trust-score/{userId}:
+    get:
+      tags: [Trust score]
+      summary: A user's trust score
+      description: "**Role:** admin."
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: role
+          in: query
+          required: true
+          description: Which role's model to score the user with.
+          schema: { type: string, enum: [client, worker] }
+      responses:
+        "200":
+          description: The user's score
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TrustScore" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+
+  /api/kyc:
+    post:
+      tags: [KYC]
+      summary: Submit identity verification
+      description: |
+        **Role:** worker. Verification is simulated: the checks run on submit and there is no admin review queue. If every check passes the worker is `verified`; otherwise `rejected` with plain-language `reasons`, and they can resubmit. Missing images and consent are reported as reasons, not as `400`. A worker must be verified before applying for jobs.
+
+        `national_id` needs `front`, `back` and `selfie` images; `passport` needs `front` and `selfie`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/KycSubmitRequest" }
+            example:
+              fullName: Amina Njeri
+              idType: national_id
+              idNumber: "12345678"
+              dateOfBirth: "1995-04-12"
+              consent: true
+              images:
+                front: data:image/jpeg;base64,/9j/4AAQ
+                back: data:image/jpeg;base64,/9j/4AAQ
+                selfie: data:image/jpeg;base64,/9j/4AAQ
+      responses:
+        "201":
+          description: The verification outcome
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  kyc: { $ref: "#/components/schemas/Kyc" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /api/kyc/tax-pin:
+    post:
+      tags: [KYC]
+      summary: Add a tax PIN
+      description: "**Role:** verified worker (`409` otherwise). A KRA PIN is a letter, nine digits and a letter. It is returned masked. Adding one lifts the yearly payout limit."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [taxPin]
+              properties:
+                taxPin: { type: string, pattern: "^[AP][0-9]{9}[A-Z]$", example: A123456789Z }
+            example:
+              taxPin: A123456789Z
+      responses:
+        "200":
+          description: The updated KYC record
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  kyc: { $ref: "#/components/schemas/Kyc" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /api/kyc/me:
+    get:
+      tags: [KYC]
+      summary: My verification status
+      description: "**Role:** worker. `kyc` is `null` before the first submission."
+      responses:
+        "200":
+          description: The caller's KYC record
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  kyc:
+                    oneOf:
+                      - $ref: "#/components/schemas/Kyc"
+                      - type: "null"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/admin/overview:
+    get:
+      tags: [Admin]
+      summary: Platform activity snapshot
+      description: "**Role:** admin. Aggregated from jobs, escrows, payments, withdrawals, disputes, refund requests and users. Trust levels are scored through the ML service ten users at a time, so this call is slow on a large user base; a user who cannot be scored counts as `unavailable`."
+      responses:
+        "200":
+          description: The overview
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Overview" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/admin/compliance:
+    get:
+      tags: [Admin]
+      summary: Compliance flags
+      description: "**Role:** admin. Patterns worth a look, high severity first. Flags are prompts to review the history, not findings."
+      responses:
+        "200":
+          description: The flags
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  flags:
+                    type: array
+                    items: { $ref: "#/components/schemas/ComplianceFlag" }
+                  thresholdKes: { type: number }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/admin/disputes:
+    get:
+      tags: [Admin]
+      summary: List disputes
+      description: "**Role:** admin. Newest first, with `jobTitle`, `clientName`, `workerName` and `photoCount`."
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [open, resolved] }
+        - $ref: "#/components/parameters/Limit25"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: A page of disputes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  disputes:
+                    type: array
+                    items: { $ref: "#/components/schemas/Dispute" }
+                  nextCursor: { $ref: "#/components/schemas/NextCursor" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/admin/disputes/{jobId}:
+    get:
+      tags: [Admin]
+      summary: Get a dispute with its evidence photos
+      description: "**Role:** admin. Also embeds the worker's limited KYC summary as `workerKyc`."
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+      responses:
+        "200":
+          description: The dispute
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dispute: { $ref: "#/components/schemas/Dispute" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/admin/refund-requests:
+    get:
+      tags: [Admin]
+      summary: List refund requests
+      description: "**Role:** admin. Newest first."
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [pending, approved] }
+        - $ref: "#/components/parameters/Limit25"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: A page of refund requests
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  refundRequests:
+                    type: array
+                    items: { $ref: "#/components/schemas/RefundRequest" }
+                  nextCursor: { $ref: "#/components/schemas/NextCursor" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/admin/payments:
+    get:
+      tags: [Admin]
+      summary: List payments and withdrawals
+      description: "**Role:** admin. STK pushes (`kind: payment`) and withdrawals (`kind: withdrawal`) merged into one feed, newest first, with `userName` and any `failureReason`."
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [pending, completed, failed] }
+        - $ref: "#/components/parameters/Limit25"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: A page of payment rows
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  payments:
+                    type: array
+                    items:
+                      type: object
+                      description: A payment or withdrawal row. Fields beyond those listed follow `Payment` or `Withdrawal`.
+                      properties:
+                        kind: { type: string, enum: [payment, withdrawal] }
+                        userName: { type: string }
+                        status: { type: string, enum: [pending, completed, failed] }
+                        amount: { type: number }
+                        currency: { type: string }
+                        failureReason: { type: string }
+                        createdAt: { type: string, format: date-time }
+                  nextCursor: { $ref: "#/components/schemas/NextCursor" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/admin/kyc:
+    get:
+      tags: [Admin]
+      summary: Workers whose KYC an admin may view
+      description: "**Role:** admin. Only workers who are party to at least one dispute are listed."
+      responses:
+        "200":
+          description: The workers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  workers:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/admin/kyc/{workerId}:
+    get:
+      tags: [Admin]
+      summary: Full KYC record and images for a disputed worker
+      description: "**Role:** admin. Returns `403` if the worker has no dispute. Each successful view is written to the KYC access log."
+      parameters:
+        - name: workerId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: The full KYC record including images
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  kyc:
+                    type: object
+                    additionalProperties: true
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/admin/users:
+    get:
+      tags: [Admin]
+      summary: List users
+      description: "**Role:** admin. Users from every collection, newest first, never including password hashes. A user with no `status` counts as `active`. Pass `nextCursor` back as `startAfter` for the next page."
+      parameters:
+        - name: role
+          in: query
+          schema: { $ref: "#/components/schemas/Role" }
+        - name: status
+          in: query
+          schema: { type: string, enum: [active, suspended] }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+        - name: startAfter
+          in: query
+          description: The `nextCursor` from the previous page.
+          schema: { type: string }
+      responses:
+        "200":
+          description: A page of users
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items: { $ref: "#/components/schemas/AdminUser" }
+                  nextCursor:
+                    type: string
+                    description: Omitted on the last page.
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/admin/users/{role}/{id}:
+    get:
+      tags: [Admin]
+      summary: Get a user with their wallet
+      description: "**Role:** admin. Admins have no wallet."
+      parameters:
+        - $ref: "#/components/parameters/UserRole"
+        - $ref: "#/components/parameters/UserId"
+      responses:
+        "200":
+          description: The user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user: { $ref: "#/components/schemas/AdminUser" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/admin/users/{role}/{id}/status:
+    patch:
+      tags: [Admin]
+      summary: Suspend or reactivate a user
+      description: "**Role:** admin. A reason is required for both. Admin accounts cannot be suspended (`403`), which also stops an admin suspending themselves. A suspended user gets `403` at login; tokens issued before stay valid until they expire."
+      parameters:
+        - $ref: "#/components/parameters/UserRole"
+        - $ref: "#/components/parameters/UserId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status, reason]
+              properties:
+                status: { type: string, enum: [active, suspended] }
+                reason: { type: string, minLength: 1, maxLength: 1000 }
+            example:
+              status: suspended
+              reason: Repeated payment failures under review.
+      responses:
+        "200":
+          description: The updated user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user: { $ref: "#/components/schemas/AdminUser" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: The `token` returned by `POST /api/auth/login`.
+
+  parameters:
+    JobId:
+      name: jobId
+      in: path
+      required: true
+      schema: { type: string }
+      example: job1
+    CheckoutRequestId:
+      name: checkoutRequestId
+      in: path
+      required: true
+      description: The id returned when the STK push was started. Simulated payments start with `sim-`.
+      schema: { type: string }
+    UserRole:
+      name: role
+      in: path
+      required: true
+      schema: { $ref: "#/components/schemas/Role" }
+    UserId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+    Limit20:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    Limit25:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+    Cursor:
+      name: cursor
+      in: query
+      description: The `nextCursor` from the previous page (an ISO date-time).
+      schema: { type: string, format: date-time }
+
+  responses:
+    BadRequest:
+      description: Invalid input. The message lists the failed checks.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unauthorized:
+      description: Missing, invalid or expired token (or wrong login credentials).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    PaymentRequired:
+      description: Wallet balance is lower than the amount due.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Forbidden:
+      description: Wrong role, not the owner of the resource, terms not accepted, or account suspended.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: The resource does not exist.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Conflict:
+      description: The request conflicts with the current state of the resource.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    ServiceUnavailable:
+      description: An upstream service (M-Pesa, the exchange-rate feed or the trust-scoring service) rejected the request or could not be reached.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    StkAccepted:
+      description: The STK Push prompt was sent and a `pending` payment stored.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              payment: { $ref: "#/components/schemas/Payment" }
+              message: { type: string, description: The customer message from Daraja. }
+              simulated: { type: boolean }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string, example: invalid or expired token }
+    Currency:
+      type: string
+      enum: [KES, UGX, TZS, USD]
+      description: Input is case-insensitive; responses use upper case.
+    Role:
+      type: string
+      enum: [client, worker, admin]
+    NextCursor:
+      type: [string, "null"]
+      format: date-time
+      description: Pass back as `cursor` for the next page. `null` on the last page.
+    KenyanPhone:
+      type: string
+      description: Accepts `07xx`, `01xx`, `+254...` or `254...`. Stored as `254XXXXXXXXX`.
+      example: "0712345678"
+    Photos:
+      type: array
+      maxItems: 3
+      items:
+        type: string
+        pattern: "^data:image/(png|jpe?g|webp);base64,"
+      description: Up to 3 PNG, JPEG or WebP data URLs, each under about 220 KB.
+
+    RegisterRequest:
+      type: object
+      required: [name, email, phone, password, role, acceptTerms]
+      properties:
+        name: { type: string, example: Jane Doe }
+        email: { type: string, format: email, example: jane@example.com }
+        phone: { $ref: "#/components/schemas/KenyanPhone" }
+        password: { type: string, minLength: 8, example: at-least-8-chars }
+        role: { type: string, enum: [client, worker], example: client }
+        acceptTerms:
+          type: boolean
+          const: true
+          example: true
+          description: Must be `true`.
+    LoginRequest:
+      type: object
+      required: [identifier, password]
+      properties:
+        identifier:
+          type: string
+          description: An email or a Kenyan mobile number. The field name `email` is also accepted.
+          example: jane@example.com
+        password: { type: string, example: at-least-8-chars }
+    AuthUser:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        email: { type: string, format: email }
+        phone: { type: string, example: "254712345678" }
+        role: { $ref: "#/components/schemas/Role" }
+        termsAccepted: { type: boolean }
+
+    Location:
+      type: object
+      required: [label]
+      properties:
+        label: { type: string, maxLength: 120, example: "Kilimani, Nairobi" }
+        lat: { type: number, minimum: -90, maximum: 90 }
+        lng: { type: number, minimum: -180, maximum: 180 }
+      description: "`lat` and `lng` must be given together."
+    PostJobRequest:
+      type: object
+      required: [title, description, budget, currency]
+      properties:
+        title: { type: string, example: Fix my sink }
+        description: { type: string, example: Leaking kitchen tap }
+        budget: { type: number, exclusiveMinimum: 0, example: 1500 }
+        currency: { $ref: "#/components/schemas/Currency" }
+        location: { $ref: "#/components/schemas/Location" }
+        photos: { $ref: "#/components/schemas/Photos" }
+    Job:
+      type: object
+      description: Lists carry `photoCount`, never the photos. `GET /api/jobs/{jobId}` adds `photos`.
+      properties:
+        id: { type: string }
+        clientId: { type: string }
+        workerId: { type: string, description: Set once a worker is selected. }
+        title: { type: string }
+        description: { type: string }
+        budget: { type: number }
+        currency: { $ref: "#/components/schemas/Currency" }
+        status: { type: string, example: open }
+        location: { $ref: "#/components/schemas/Location" }
+        photoCount: { type: integer }
+        photos: { $ref: "#/components/schemas/Photos" }
+        agreedPrice: { type: number, description: "The selected quote, once a worker is selected." }
+        agreedCurrency: { $ref: "#/components/schemas/Currency" }
+        agreedDeliveryHours: { type: number }
+        distanceKm: { type: number, description: "Browse only, when `lat` and `lng` were sent." }
+        escrowStatus: { type: string, description: "`/mine` only, once funded." }
+        counterpartyName: { type: string, description: "`/mine` only." }
+        applicantCount: { type: integer, description: "`/mine` only, for a client's open jobs." }
+        myApplication:
+          type: object
+          description: Browse only, on jobs the calling worker has applied to.
+          properties:
+            price: { type: number }
+            currency: { $ref: "#/components/schemas/Currency" }
+            message: { type: string }
+            status: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    ApplyRequest:
+      type: object
+      required: [price, deliveryHours]
+      properties:
+        price: { type: number, exclusiveMinimum: 0, example: 1200, description: "The quote, in the job's currency." }
+        deliveryHours:
+          type: number
+          exclusiveMinimum: 0
+          maximum: 720
+          example: 48
+          description: How long the worker promises to take, counted from when the client funds the job. Delivering later counts against the trust score.
+        message: { type: string, maxLength: 1000 }
+    UpdateQuoteRequest:
+      type: object
+      minProperties: 1
+      properties:
+        price: { type: number, exclusiveMinimum: 0 }
+        deliveryHours: { type: number, exclusiveMinimum: 0, maximum: 720 }
+        message: { type: string, maxLength: 1000 }
+    Application:
+      type: object
+      properties:
+        id: { type: string, example: job1_worker1 }
+        jobId: { type: string }
+        workerId: { type: string }
+        price: { type: number }
+        currency: { $ref: "#/components/schemas/Currency" }
+        deliveryHours: { type: number }
+        message: { type: string }
+        status: { type: string, enum: [pending, selected, rejected] }
+        createdAt: { type: string, format: date-time }
+    ApplicationWithWorker:
+      allOf:
+        - $ref: "#/components/schemas/Application"
+        - type: object
+          properties:
+            worker:
+              type: object
+              properties:
+                id: { type: string }
+                name: { type: string }
+                email: { type: string }
+                trustLevel: { type: string, enum: [High, Medium, Low], description: Left out if the ML service cannot score the worker. }
+                kyc: { $ref: "#/components/schemas/KycSummary" }
+
+    Escrow:
+      type: object
+      properties:
+        jobId: { type: string }
+        clientId: { type: string }
+        workerId: { type: string }
+        amount: { type: number }
+        currency: { type: string }
+        status:
+          type: string
+          enum: [pending, in_escrow, work_submitted, completed, refunded, disputed, split]
+          description: "`completed`, `refunded` and `split` are final."
+        clientAmount: { type: number, description: Only on a split. }
+        workerAmount: { type: number, description: Only on a split. }
+        createdAt: { type: string, format: date-time }
+        fundedAt: { type: string, format: date-time }
+        workSubmittedAt: { type: string, format: date-time }
+        completedAt: { type: string, format: date-time }
+        refundedAt: { type: string, format: date-time }
+        disputedAt: { type: string, format: date-time }
+    RefundRequest:
+      type: object
+      properties:
+        jobId: { type: string }
+        clientId: { type: string }
+        workerId: { type: string }
+        amount: { type: number }
+        currency: { type: string }
+        reason: { type: string }
+        status: { type: string, enum: [pending, approved] }
+        processedBy: { type: string }
+        processedAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+    Dispute:
+      type: object
+      properties:
+        jobId: { type: string }
+        clientId: { type: string }
+        workerId: { type: string }
+        amount: { type: number }
+        currency: { type: string }
+        raisedBy: { type: string }
+        raisedByRole: { type: string, enum: [client, worker] }
+        reason: { type: string }
+        photoCount: { type: integer }
+        photos: { $ref: "#/components/schemas/Photos" }
+        previousStatus: { type: string }
+        status: { type: string, enum: [open, resolved] }
+        decision: { type: string, enum: [release, refund, split] }
+        clientAmount: { type: number }
+        workerAmount: { type: number }
+        resolution: { type: string }
+        resolvedBy: { type: string }
+        resolvedAt: { type: string, format: date-time }
+        jobTitle: { type: string, description: Admin lists only. }
+        clientName: { type: string, description: Admin lists only. }
+        workerName: { type: string, description: Admin lists only. }
+        workerKyc: { $ref: "#/components/schemas/KycSummary" }
+        createdAt: { type: string, format: date-time }
+
+    Payment:
+      type: object
+      properties:
+        checkoutRequestId: { type: string }
+        merchantRequestId: { type: string }
+        kind: { type: string, enum: [escrow, top_up] }
+        jobId: { type: string }
+        workerId: { type: string }
+        clientId: { type: string }
+        amount: { type: integer, description: Whole KES. }
+        currency: { type: string, example: KES }
+        phone: { type: string }
+        agreedPrice: { type: number }
+        agreedCurrency: { type: string }
+        status: { type: string, enum: [pending, completed, failed] }
+        receipt: { type: string }
+        failureReason: { type: string }
+        settlement: { type: string, enum: [escrow_funded, wallet_credited] }
+        settledAt: { type: string, format: date-time }
+        simulated: { type: boolean }
+        createdAt: { type: string, format: date-time }
+    Withdrawal:
+      type: object
+      properties:
+        originatorConversationId: { type: string }
+        conversationId: { type: string }
+        workerId: { type: string }
+        amount: { type: integer }
+        currency: { type: string, example: KES }
+        phone: { type: string }
+        status: { type: string, enum: [pending, completed, failed] }
+        createdAt: { type: string, format: date-time }
+    Wallet:
+      type: object
+      properties:
+        id: { type: string }
+        balance: { type: number }
+        escrowBalance: { type: number }
+        currency: { type: string, example: KES }
+    Statement:
+      type: object
+      properties:
+        year: { type: integer }
+        role: { type: string, enum: [client, worker] }
+        currency: { type: string }
+        months:
+          type: array
+          minItems: 12
+          maxItems: 12
+          items:
+            type: object
+            properties:
+              month: { type: integer, minimum: 1, maximum: 12 }
+              jobs: { type: integer }
+              received: { type: number, description: Workers only. }
+              withdrawn: { type: number, description: Workers only. }
+              paid: { type: number, description: Clients only. }
+              refunded: { type: number, description: Clients only. }
+        totals: { type: object, additionalProperties: true }
+        tax:
+          type: object
+          description: Workers only. The masked tax PIN and the yearly payout limit.
+          additionalProperties: true
+    Conversion:
+      type: object
+      properties:
+        from: { $ref: "#/components/schemas/Currency" }
+        to: { $ref: "#/components/schemas/Currency" }
+        amount: { type: number }
+        rate: { type: number, description: Units of `to` per 1 `from`. }
+        converted: { type: number, description: Rounded to 2 decimals. }
+        rateUpdatedAt: { type: string, format: date-time }
+    Transaction:
+      type: object
+      properties:
+        id: { type: string }
+        jobId: { type: string }
+        type:
+          type: string
+          description: The ledger entry type. Known values include the ones listed; withdrawals and reversals also write entries.
+          examples: [wallet_topup, escrow_fund, escrow_release, escrow_refund, withdrawal, withdrawal_reversal]
+        amount: { type: number }
+        currency: { type: string }
+        fromUserId: { type: string }
+        toUserId: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    TrustScore:
+      type: object
+      properties:
+        userId: { type: string }
+        role: { type: string, enum: [client, worker] }
+        trustLevel: { type: string, enum: [High, Medium, Low, New] }
+        probabilities:
+          type: object
+          description: Probability per level from the ML model. Empty for `New` users.
+          additionalProperties: { type: number }
+        features:
+          type: object
+          description: The model inputs worked out from the user's history. Absent for `New` users.
+          additionalProperties: { type: number }
+        finishedJobs: { type: integer, description: Settled jobs so far. }
+        jobsNeeded: { type: integer, description: "For `New` users, how many more settled jobs until they are scored." }
+
+    KycSubmitRequest:
+      type: object
+      required: [fullName, idType, idNumber, dateOfBirth, consent]
+      properties:
+        fullName: { type: string, example: Amina Njeri }
+        idType: { type: string, enum: [national_id, passport] }
+        idNumber: { type: string, description: "National ID: 7-8 digits. Passport: 6-9 letters or digits.", example: "12345678" }
+        dateOfBirth: { type: string, pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", example: "1995-04-12" }
+        taxPin: { type: string, pattern: "^[AP][0-9]{9}[A-Z]$", example: A123456789Z }
+        consent: { type: boolean, example: true }
+        images:
+          type: object
+          description: Image data URLs (PNG, JPEG or WebP).
+          properties:
+            front: { type: string }
+            back: { type: string }
+            selfie: { type: string }
+    Kyc:
+      type: object
+      properties:
+        status: { type: string, enum: [verified, rejected] }
+        fullName: { type: string }
+        idType: { type: string, enum: [national_id, passport] }
+        idNumber: { type: string, description: Masked. }
+        taxPin: { type: string, description: "Masked, for example `A*********Z`." }
+        reasons:
+          type: array
+          items: { type: string }
+        submittedAt: { type: string, format: date-time }
+        verifiedAt: { type: string, format: date-time }
+    KycSummary:
+      type: object
+      description: What clients and dispute views see.
+      properties:
+        verified: { type: boolean }
+        name: { type: string }
+        idType: { type: string }
+        idNumberMasked: { type: string, example: "*****678" }
+        verifiedAt: { type: string, format: date-time }
+
+    AdminUser:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        email: { type: string }
+        phone: { type: string }
+        role: { $ref: "#/components/schemas/Role" }
+        status: { type: string, enum: [active, suspended] }
+        statusReason: { type: string }
+        createdAt: { type: string, format: date-time }
+        wallet:
+          allOf:
+            - $ref: "#/components/schemas/Wallet"
+          description: Only on the single-user endpoint.
+    ComplianceFlag:
+      type: object
+      properties:
+        type: { type: string, enum: [possible_splitting, refund_after_delivery, no_tax_pin] }
+        severity: { type: string }
+        subject: { type: string }
+        counterparty: { type: string }
+        jobCount: { type: integer }
+        amount: { type: number }
+        detail: { type: string }
+    Overview:
+      type: object
+      properties:
+        jobs:
+          type: object
+          properties:
+            total: { type: integer }
+            byStatus: { type: object, additionalProperties: { type: integer } }
+        escrows:
+          type: object
+          properties:
+            total: { type: integer }
+            byStatus: { type: object, additionalProperties: { type: integer } }
+            amounts:
+              type: object
+              description: Totals per currency. `held` covers `in_escrow`, `work_submitted` and `disputed`.
+              properties:
+                held: { type: object, additionalProperties: { type: number } }
+                released: { type: object, additionalProperties: { type: number } }
+                refunded: { type: object, additionalProperties: { type: number } }
+        payments:
+          type: object
+          properties:
+            total: { type: integer }
+            byStatus: { type: object, additionalProperties: { type: integer } }
+        withdrawals:
+          type: object
+          properties:
+            total: { type: integer }
+            byStatus: { type: object, additionalProperties: { type: integer } }
+        disputes:
+          type: object
+          properties:
+            total: { type: integer }
+            open: { type: integer }
+            resolved: { type: integer }
+        refundRequests:
+          type: object
+          properties:
+            total: { type: integer }
+            pending: { type: integer }
+            approved: { type: integer }
+        trust:
+          type: object
+          properties:
+            scored: { type: integer }
+            unavailable: { type: integer }
+            byLevel:
+              type: object
+              description: Counts per trust level, for each role.
+              additionalProperties:
+                type: object
+                additionalProperties: { type: integer }
+            lowTrustUsers:
+              type: array
+              items:
+                type: object
+                properties:
+                  id: { type: string }
+                  role: { type: string }
+                  name: { type: string }
+        activity:
+          type: object
+          description: Counts since midnight East Africa Time (UTC+3).
+          properties:
+            paymentsToday: { type: integer }
+            failedPaymentsToday: { type: integer }
+            activeUsers: { type: integer }

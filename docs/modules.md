@@ -1,6 +1,6 @@
 # Modules
 
-The seven modules from the proposal, mapped to where they live in the code. Backend paths are under `backend/src/`, frontend paths under `frontend/src/pages/`. Endpoint details are in the [backend README](../backend/README.md).
+The seven modules from the proposal, mapped to where they live in the code. Backend paths are under `backend/src/`, frontend paths under `frontend/src/pages/`. Endpoint details are in the [OpenAPI spec](openapi.yaml) and the [backend README](../backend/README.md).
 
 ## 1. System Documentation
 

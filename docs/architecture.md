@@ -85,6 +85,7 @@ The UML class and ER diagrams from the proposal are kept outside this repository
 
 - [Module map](modules.md): which routes, services, collections and screens belong to each module
 - [Setup guide](setup-guide.md)
+- [API specification](openapi.yaml) and [Postman collection](postman/)
 - [Backend API reference](../backend/README.md)
 - [Frontend notes](../frontend/README.md)
 - [Trust-scoring service](../trust-scoring-ml/README.md)
