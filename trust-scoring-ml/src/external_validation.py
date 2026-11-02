@@ -39,19 +39,24 @@ def partial_spearman(x, y, z):
     return rho, 2 * t.sf(abs(t_stat), dof)
 
 
-def load_client_fraud_rates(data_dir):
-    """Compute each client's real fraud rate from train_fraud_labels.json.
+def load_client_fraud_rates(data_dir, start=None):
+    """Compute each client's real fraud rate from train_fraud_labels.json, counting only
+    transactions dated on or after `start` when it is given.
 
     Uses a Series.map lookup rather than a DataFrame merge to keep peak memory
     down on the ~13.3M-row transactions file.
     """
     data_dir = Path(data_dir)
 
+    columns = ["id", "client_id"] + (["date"] if start is not None else [])
     transactions = pd.read_csv(
         data_dir / "transactions_data.csv",
-        usecols=["id", "client_id"],
+        usecols=columns,
         dtype={"id": "int32", "client_id": "int32"},
+        parse_dates=["date"] if start is not None else False,
     )
+    if start is not None:
+        transactions = transactions[transactions["date"] >= start].drop(columns="date")
 
     with open(data_dir / "train_fraud_labels.json", "r", encoding="utf-8") as f:
         fraud_labels = json.load(f)["target"]
