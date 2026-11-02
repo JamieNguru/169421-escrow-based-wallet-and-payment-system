@@ -27,6 +27,7 @@ Digital labour platforms in East Africa rely on informal mobile-money transfers 
 - [Postman collection](docs/postman/): import it to try the API
 - [Backend API reference](backend/README.md): behaviour and setup notes per feature
 - [Manual test pass](docs/manual-test-pass.md)
+- [Final status](docs/final-status.md): the seven modules against the original scope, with known gaps
 
 ## Modules
 
@@ -44,6 +45,6 @@ Client, Worker, Admin.
 
 ## Status
 
-Tracked via [Issues](https://github.com/JamieNguru/169421-escrow-based-wallet-and-payment-system/issues) and [Milestones](https://github.com/JamieNguru/169421-escrow-based-wallet-and-payment-system/milestones). See the trust-scoring service's own [README](trust-scoring-ml/README.md) for ML setup instructions.
+All seven modules are implemented; see the [final status](docs/final-status.md) for what is verified and what is still open. Work is tracked via [Issues](https://github.com/JamieNguru/169421-escrow-based-wallet-and-payment-system/issues) and [Milestones](https://github.com/JamieNguru/169421-escrow-based-wallet-and-payment-system/milestones). See the trust-scoring service's own [README](trust-scoring-ml/README.md) for ML setup instructions.
 
 The full capstone proposal (problem statement, literature review, methodology, system design) is kept outside this repository.
