@@ -37,16 +37,10 @@ function Home() {
   return <Navigate to={user ? homePathFor(user.role) : '/login'} replace />
 }
 
-// Signed-in users go straight to their dashboard; everyone else sees the landing page.
-function Front() {
-  const { user } = useAuth()
-  return user ? <Navigate to={homePathFor(user.role)} replace /> : <Landing />
-}
-
 export default function App() {
   return (
     <Routes>
-      <Route path="/" element={<Front />} />
+      <Route path="/" element={<Landing />} />
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/terms" element={<Terms />} />
