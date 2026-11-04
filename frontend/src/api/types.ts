@@ -193,11 +193,18 @@ export interface Payment {
 }
 
 export interface Withdrawal {
+  // Present on the worker's withdrawal list (and on a simulated one).
+  id: string
   workerId: string
   amount: number
   currency: Currency
   phone: string
   status: 'pending' | 'completed' | 'failed'
+  receipt?: string
+  failureReason?: string
+  // True in server test mode, where no real payout is requested.
+  simulated?: boolean
+  createdAt: string
 }
 
 export interface AdminDispute {

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { isSimulateMode } from "../config/daraja";
+import { isPaystackEnabled } from "../config/paystack";
 import { getDb } from "../config/firebase";
 import { HttpError } from "../errors";
 import type { InitiateStkInput, SimulateOutcome, TopUpInput } from "../validation/payments";
@@ -8,6 +9,7 @@ import { normalizePhone } from "../validation/register";
 import { initiateStkPush, type StkPushResult } from "./darajaService";
 import { transition } from "./escrowStateMachine";
 import { amountDueKes, assertAmountMatches, assertPayable, jobTerms } from "./jobPricing";
+import { chargeMpesa, verifyCharge, type ChargeResult } from "./paystackService";
 
 export type PaymentStatus = "pending" | "completed" | "failed";
 
@@ -28,6 +30,8 @@ export interface Payment {
   status: PaymentStatus;
   // True when no real M-Pesa prompt was sent (DARAJA_SIMULATE test mode).
   simulated?: boolean;
+  // Set when Paystack took the payment; otherwise it went through Daraja.
+  provider?: "paystack";
   receipt?: string;
   failureReason?: string;
   // What settling did: funded the job's escrow, or only credited the wallet.
@@ -64,6 +68,10 @@ async function startPayment(
   const phone = typeof rawPhone === "string" ? normalizePhone(rawPhone) : null;
   if (!phone) throw new HttpError(400, "a valid phone number is required");
 
+  if (isPaystackEnabled()) {
+    return startPaystackPayment(clientId, clientSnap.data()?.email, phone, input);
+  }
+
   const simulated = isSimulateMode();
   const result: StkPushResult = simulated
     ? {
@@ -78,9 +86,24 @@ async function startPayment(
         description: input.description,
       });
 
-  const payment: Payment = {
-    checkoutRequestId: result.checkoutRequestId,
-    merchantRequestId: result.merchantRequestId,
+  const payment = newPayment(clientId, phone, input, result.checkoutRequestId, result.merchantRequestId);
+  if (simulated) payment.simulated = true;
+  // Keyed by CheckoutRequestID, which is what the callback carries.
+  await db.collection("payments").doc(result.checkoutRequestId).set(payment);
+
+  return { payment, customerMessage: result.customerMessage };
+}
+
+function newPayment(
+  clientId: string,
+  phone: string,
+  input: StartInput,
+  checkoutRequestId: string,
+  merchantRequestId: string,
+): Payment {
+  return {
+    checkoutRequestId,
+    merchantRequestId,
     kind: input.kind,
     ...(input.jobId && { jobId: input.jobId }),
     ...(input.workerId && { workerId: input.workerId }),
@@ -91,13 +114,53 @@ async function startPayment(
     currency: "KES",
     phone,
     status: "pending",
-    ...(simulated && { simulated }),
     createdAt: new Date(),
   };
-  // Keyed by CheckoutRequestID, which is what the callback carries.
-  await db.collection("payments").doc(result.checkoutRequestId).set(payment);
+}
 
-  return { payment, customerMessage: result.customerMessage };
+// Paystack needs a real-looking email for each customer and refuses reserved domains such as
+// .test (used by the demo accounts), so those get a stand-in address instead.
+function paystackEmail(email: unknown, clientId: string): string {
+  const valid = typeof email === "string" && /^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(email) && !/\.(test|invalid|localhost|local)$/i.test(email);
+  return valid ? (email as string) : `${clientId}@example.com`;
+}
+
+// Charges the client's M-Pesa through Paystack. The pending record is written first, so a
+// webhook that arrives before this function returns still finds it. Paystack's own
+// reference is the payment id; it is what the webhook carries back.
+async function startPaystackPayment(
+  clientId: string,
+  email: unknown,
+  phone: string,
+  input: StartInput,
+): Promise<{ payment: Payment; customerMessage: string }> {
+  const db = getDb();
+  const reference = `ps-${randomUUID()}`;
+  const payment: Payment = { ...newPayment(clientId, phone, input, reference, reference), provider: "paystack" };
+  await db.collection("payments").doc(reference).set(payment);
+
+  let charge: ChargeResult;
+  try {
+    charge = await chargeMpesa({
+      reference,
+      email: paystackEmail(email, clientId),
+      phone,
+      amount: input.amount,
+    });
+  } catch (err) {
+    await settlePayment(reference, { success: false, reason: "Could not reach the payment service" });
+    throw err;
+  }
+
+  if (charge.state === "failed") {
+    await settlePayment(reference, { success: false, reason: charge.reason });
+    throw new HttpError(402, charge.reason);
+  }
+  if (charge.state === "success") {
+    await settlePayment(reference, { success: true, amount: charge.amount, receipt: charge.receipt });
+    return { payment: await getPaymentById(reference), customerMessage: "Payment received." };
+  }
+  return { payment, customerMessage: charge.message };
 }
 
 // Prompts the client's phone to pay for a job's escrow.
@@ -157,7 +220,23 @@ export async function getPayment(clientId: string, checkoutRequestId: string): P
   if (data.clientId !== clientId) {
     throw new HttpError(403, "you do not have permission to access this resource");
   }
+
+  // Asking Paystack directly means the page does not depend on its webhook reaching us.
+  if (data.provider === "paystack" && data.status === "pending") {
+    const charge = await verifyCharge(checkoutRequestId).catch(() => undefined);
+    if (charge?.state === "success") {
+      await settlePayment(checkoutRequestId, { success: true, amount: charge.amount, receipt: charge.receipt });
+    } else if (charge?.state === "failed") {
+      await settlePayment(checkoutRequestId, { success: false, reason: charge.reason });
+    }
+    return getPaymentById(checkoutRequestId);
+  }
   return fromDoc(data);
+}
+
+async function getPaymentById(checkoutRequestId: string): Promise<Payment> {
+  const snap = await getDb().collection("payments").doc(checkoutRequestId).get();
+  return fromDoc(snap.data()!);
 }
 
 const fromDoc = (data: Record<string, any>): Payment => ({

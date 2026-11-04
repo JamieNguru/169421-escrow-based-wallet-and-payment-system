@@ -19,7 +19,14 @@ export function createApp(): Express {
 
   app.use(cors());
   // Job and dispute photos arrive as data URLs, so allow more than the 100 kb default.
-  app.use(express.json({ limit: "2mb" }));
+  app.use(
+    express.json({
+      limit: "2mb",
+      verify: (req, _res, buf) => {
+        (req as express.Request).rawBody = buf;
+      },
+    }),
+  );
 
   app.use("/api/health", healthRouter);
   app.get("/api/terms", (_req, res) => {

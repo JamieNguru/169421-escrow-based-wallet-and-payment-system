@@ -355,3 +355,109 @@ describe("worker withdrawals (Daraja B2C)", () => {
     expect(walletBalance()).toBe(600);
   });
 });
+
+describe("worker withdrawals in test mode (DARAJA_SIMULATE)", () => {
+  const app = createApp();
+  let fetchMock: jest.SpyInstance;
+
+  beforeEach(() => {
+    process.env.JWT_SECRET = "test-secret";
+    process.env.DARAJA_SIMULATE = "true";
+    store.clear();
+    store.set("workers/worker1", { name: "Wanjiru", phone: "0708374149" });
+    store.set("wallets/w1", { ownerId: "worker1", ownerRole: "worker", currency: "KES", balance: 1000, escrowBalance: 0 });
+    fetchMock = jest.spyOn(global, "fetch").mockImplementation(async () => {
+      throw new Error("no network in test mode");
+    });
+  });
+
+  afterEach(() => {
+    delete process.env.DARAJA_SIMULATE;
+    jest.restoreAllMocks();
+  });
+
+  const withdraw = (amount = 400) =>
+    request(app).post("/api/payments/withdraw").set("Authorization", workerAuth()).send({ amount });
+  const simulate = (id: string, outcome: string, auth = workerAuth()) =>
+    request(app).post(`/api/payments/withdrawals/${id}/simulate`).set("Authorization", auth).send({ outcome });
+
+  test("debits the wallet but never calls M-Pesa", async () => {
+    const res = await withdraw();
+
+    expect(res.status).toBe(202);
+    expect(res.body.withdrawal).toMatchObject({ status: "pending", simulated: true, amount: 400 });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(walletBalance()).toBe(600);
+  });
+
+  test("a simulated success completes it with a receipt", async () => {
+    const id = (await withdraw()).body.withdrawal.originatorConversationId;
+    const res = await simulate(id, "success");
+
+    expect(res.status).toBe(200);
+    expect(res.body.withdrawal).toMatchObject({ status: "completed", id });
+    expect(res.body.withdrawal.receipt).toMatch(/^SIM/);
+    expect(walletBalance()).toBe(600);
+  });
+
+  test("a simulated failure returns the money to the wallet", async () => {
+    const id = (await withdraw()).body.withdrawal.originatorConversationId;
+    const res = await simulate(id, "failure");
+
+    expect(res.body.withdrawal).toMatchObject({ status: "failed", failureReason: "Simulated failure" });
+    expect(walletBalance()).toBe(1000);
+    expect(store.get(`transactions/withdraw-reversal-${id}`)).toMatchObject({ type: "withdrawal_reversal", amount: 400 });
+  });
+
+  test("settling twice changes nothing the second time", async () => {
+    const id = (await withdraw()).body.withdrawal.originatorConversationId;
+    await simulate(id, "failure");
+    const again = await simulate(id, "success");
+
+    expect(again.body.withdrawal.status).toBe("failed");
+    expect(walletBalance()).toBe(1000);
+  });
+
+  test("lists the worker's withdrawals with their status, newest first", async () => {
+    const first = (await withdraw(100)).body.withdrawal.originatorConversationId;
+    await simulate(first, "success");
+    await new Promise((r) => setTimeout(r, 5));
+    await withdraw(200);
+
+    const res = await request(app).get("/api/payments/withdrawals").set("Authorization", workerAuth());
+
+    expect(res.status).toBe(200);
+    expect(res.body.withdrawals.map((w: any) => [w.amount, w.status])).toEqual([[200, "pending"], [100, "completed"]]);
+  });
+
+  test("a simulated withdrawal completes by itself a few seconds after it was requested", async () => {
+    const fresh = (await withdraw(100)).body.withdrawal.originatorConversationId;
+    const old = (await withdraw(200)).body.withdrawal.originatorConversationId;
+    store.set(`withdrawals/${old}`, { ...store.get(`withdrawals/${old}`)!, createdAt: new Date(Date.now() - 10_000) });
+
+    const res = await request(app).get("/api/payments/withdrawals").set("Authorization", workerAuth());
+    const byId = Object.fromEntries(res.body.withdrawals.map((w: any) => [w.id, w]));
+
+    expect(byId[fresh].status).toBe("pending");
+    expect(byId[old].status).toBe("completed");
+    expect(byId[old].receipt).toMatch(/^SIM/);
+    expect(walletBalance()).toBe(700);
+  });
+
+  test("another worker cannot settle it, and a real withdrawal cannot be simulated", async () => {
+    const id = (await withdraw()).body.withdrawal.originatorConversationId;
+    const other = `Bearer ${signToken({ sub: "worker2", role: "worker" })}`;
+    expect((await simulate(id, "success", other)).status).toBe(404);
+
+    store.set("withdrawals/real1", { workerId: "worker1", amount: 5, status: "pending", createdAt: new Date() });
+    expect((await simulate("real1", "success")).status).toBe(409);
+  });
+
+  test("is off outside test mode, and rejects a bad outcome", async () => {
+    const id = (await withdraw()).body.withdrawal.originatorConversationId;
+    expect((await simulate(id, "maybe")).status).toBe(400);
+
+    delete process.env.DARAJA_SIMULATE;
+    expect((await simulate(id, "success")).status).toBe(404);
+  });
+});
