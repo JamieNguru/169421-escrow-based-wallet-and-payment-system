@@ -25,6 +25,7 @@ const NAV: Record<Role, NavItem[]> = {
     { to: '/client/history', icon: 'history', label: 'History' },
     { to: '/client/statement', icon: 'briefcase', label: 'Statement' },
     { to: '/client/trust', icon: 'shield', label: 'My Trust' },
+    { to: '/client/profile', icon: 'users', label: 'Profile' },
   ],
   worker: [
     { to: '/worker', icon: 'home', label: 'Home', end: true },
@@ -34,6 +35,7 @@ const NAV: Record<Role, NavItem[]> = {
     { to: '/worker/history', icon: 'history', label: 'History' },
     { to: '/worker/statement', icon: 'briefcase', label: 'Earnings' },
     { to: '/worker/trust', icon: 'shield', label: 'My Trust' },
+    { to: '/worker/profile', icon: 'users', label: 'Profile' },
   ],
   admin: [
     { to: '/admin', icon: 'home', label: 'Overview', end: true },
@@ -161,7 +163,7 @@ function Avatar({ name, size = 'h-10 w-10' }: { name: string; size?: string }) {
 function MobileNav({ role }: { role: Role }) {
   return (
     <nav className="sticky bottom-0 z-20 mt-auto flex justify-around border-t border-line/70 bg-surface/90 px-2 py-2 backdrop-blur md:hidden">
-      {NAV[role].map((item) => (
+      {NAV[role].filter((item) => !item.to.endsWith('/profile')).map((item) => (
         <NavLink
           key={item.to}
           to={item.to}
@@ -233,6 +235,16 @@ function AccountMenu() {
         <div className="absolute right-0 z-20 mt-3 w-60 animate-rise rounded-2xl border border-line/70 bg-surface p-4 shadow-lift">
           <div className="text-sm font-bold">{user.name}</div>
           <div className="mb-3 truncate text-[13px] text-muted">{user.email}</div>
+          {user.role !== 'admin' && (
+            <Link
+              to={`/${user.role}/profile`}
+              onClick={() => setOpen(false)}
+              className="mb-2 flex w-full items-center justify-center gap-2 rounded-xl border-[1.5px] border-line py-2.5 text-sm font-bold transition-colors hover:border-brand/40 hover:bg-brand-tint hover:text-brand-ink"
+            >
+              <Icon name="users" size={17} />
+              Edit profile
+            </Link>
+          )}
           <button
             type="button"
             onClick={logout}

@@ -42,6 +42,8 @@ export const authApi = {
   }) => post<User>('/api/auth/register', input),
   acceptTerms: () =>
     post<{ termsAccepted: true; termsVersion: string }>('/api/auth/accept-terms', {}),
+  // Changes the signed-in client's or worker's own name and/or phone (their M-Pesa number).
+  updateProfile: (input: { name?: string; phone?: string }) => patch<User>('/api/auth/profile', input),
 }
 
 export const termsApi = {

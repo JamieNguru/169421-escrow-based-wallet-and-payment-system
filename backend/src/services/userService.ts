@@ -5,6 +5,7 @@ import { CURRENT_TERMS_VERSION } from "../config/terms";
 import { HttpError } from "../errors";
 import type { ListUsersQuery, SetUserStatusInput } from "../validation/admin";
 import type { LoginInput } from "../validation/login";
+import type { ProfileInput } from "../validation/profile";
 import type { RegisterInput } from "../validation/register";
 
 const COLLECTIONS = { client: "clients", worker: "workers", admin: "admins" } as const;
@@ -140,6 +141,48 @@ export async function acceptTerms(role: Role, id: string): Promise<{ termsAccept
   const { ref } = await loadUser(role, id);
   await ref.update({ termsVersion: CURRENT_TERMS_VERSION, termsAcceptedAt: new Date() });
   return { termsAccepted: true, termsVersion: CURRENT_TERMS_VERSION };
+}
+
+// Changes a client's or worker's own name and phone. The phone is also the
+// M-Pesa number for payouts and a login identifier, so its phones/{phone} index
+// doc moves with it, in the same transaction, and a number already taken by
+// someone else is refused.
+export async function updateProfile(role: Role, id: string, input: ProfileInput): Promise<RegisteredUser> {
+  const db = getDb();
+  const userRef = db.collection(COLLECTIONS[role]).doc(id);
+
+  return db.runTransaction(async (tx) => {
+    const userSnap = await tx.get(userRef);
+    const user = userSnap.data();
+    if (!userSnap.exists || !user) {
+      throw new HttpError(404, "User not found");
+    }
+
+    const changes: Record<string, unknown> = {};
+    if (input.name !== undefined) changes.name = input.name;
+
+    if (input.phone !== undefined && input.phone !== user.phone) {
+      const newRef = db.collection("phones").doc(input.phone);
+      const taken = await tx.get(newRef);
+      if (taken.exists && taken.data()?.userId !== id) {
+        throw new HttpError(409, "An account with this phone number already exists");
+      }
+      if (user.phone) tx.delete(db.collection("phones").doc(user.phone));
+      tx.set(newRef, { role, userId: id });
+      changes.phone = input.phone;
+    }
+
+    if (Object.keys(changes).length > 0) tx.update(userRef, changes);
+    const next = { ...user, ...changes };
+    return {
+      id,
+      name: next.name,
+      email: next.email,
+      ...(next.phone && { phone: next.phone }),
+      role,
+      termsAccepted: next.termsVersion === CURRENT_TERMS_VERSION,
+    };
+  });
 }
 
 export type UserStatus = "active" | "suspended";

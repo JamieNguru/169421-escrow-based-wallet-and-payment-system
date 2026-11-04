@@ -23,6 +23,7 @@ import ReleasePayment from './pages/client/ReleasePayment'
 import ReportProblem from './pages/client/ReportProblem'
 import ClientWallet from './pages/client/Wallet'
 import History from './pages/shared/History'
+import Profile from './pages/shared/Profile'
 import Statement from './pages/shared/Statement'
 import Trust from './pages/shared/Trust'
 import WorkerDashboard from './pages/worker/Dashboard'
@@ -54,6 +55,7 @@ export default function App() {
           <Route path="wallet" element={<ClientWallet />} />
           <Route path="history" element={<History />} />
           <Route path="statement" element={<Statement />} />
+          <Route path="profile" element={<Profile />} />
           <Route path="trust" element={<Trust />} />
         </Route>
       </Route>
@@ -67,6 +69,7 @@ export default function App() {
           <Route path="wallet" element={<Withdraw />} />
           <Route path="history" element={<History />} />
           <Route path="statement" element={<Statement />} />
+          <Route path="profile" element={<Profile />} />
           <Route path="trust" element={<Trust />} />
         </Route>
       </Route>
