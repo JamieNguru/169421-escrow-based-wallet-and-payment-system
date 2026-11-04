@@ -1,6 +1,6 @@
-# Escrow Wallet frontend
+# Kaziforce frontend
 
-React + TypeScript + Vite single-page app for the escrow wallet platform. It has three role-based areas (Client, Worker, Admin) built from the wireframes, and talks to the Express backend in [`../backend`](../backend).
+React + TypeScript + Vite single-page app for the Kaziforce platform. It has three role-based areas (Client, Worker, Admin) built from the wireframes, and talks to the Express backend in [`../backend`](../backend).
 
 ## Run it
 

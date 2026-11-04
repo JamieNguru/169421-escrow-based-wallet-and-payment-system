@@ -1,6 +1,6 @@
 openapi: 3.1.0
 info:
-  title: Escrow Wallet API
+  title: Kaziforce API
   version: 1.0.0
   description: |
     REST API for the escrow-based wallet and payment system. Clients post jobs and fund escrow, workers quote and deliver, and admins resolve disputes and refunds.

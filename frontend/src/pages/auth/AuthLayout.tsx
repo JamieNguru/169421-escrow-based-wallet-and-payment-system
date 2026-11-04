@@ -22,7 +22,7 @@ export default function AuthLayout({ title, sub, width = 'max-w-[460px]', childr
           <span className="flex h-11 w-11 items-center justify-center rounded-[28%] bg-white/95 text-brand shadow-lg">
             <Icon name="shield" size={24} />
           </span>
-          <span className="text-xl font-extrabold tracking-tight">Escrow Wallet</span>
+          <span className="text-xl font-extrabold tracking-tight">Kaziforce</span>
         </div>
 
         <div className="relative">

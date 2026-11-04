@@ -1,6 +1,6 @@
 # Trust Scoring ML Microservice
 
-Two Random Forest classifiers (one for workers, one for clients) that score platform users into Low/Medium/High trust levels based on their transaction history, served through a single role-aware Flask microservice for the escrow wallet backend.
+Two Random Forest classifiers (one for workers, one for clients) that score platform users into Low/Medium/High trust levels based on their transaction history, served through a single role-aware Flask microservice for the Kaziforce backend.
 
 Workers are assessed on job completion rate, dispute frequency, and response time. Clients are assessed on payment completion, escrow release time, and refund/dispute history.
 

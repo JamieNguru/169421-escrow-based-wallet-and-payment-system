@@ -72,7 +72,7 @@ Check it with `GET http://localhost:4000/api/health`.
 
 Every public endpoint is described in [`openapi.yaml`](openapi.yaml). To call them from Postman:
 
-1. Import `docs/postman/escrow-wallet-api.postman_collection.json` and `docs/postman/escrow-wallet-api.postman_environment.json`, then select the **Escrow Wallet - Local** environment.
+1. Import `docs/postman/escrow-wallet-api.postman_collection.json` and `docs/postman/escrow-wallet-api.postman_environment.json`, then select the **Kaziforce - Local** environment.
 2. Send **Sign in and get a JWT** (Auth folder) with a registered or seeded account.
 3. Copy the `token` from the response into the environment's `token` variable. Every other request sends it as a Bearer token.
 4. Set `jobId`, `workerId`, `checkoutRequestId` and the other id variables to real ids as you go.
