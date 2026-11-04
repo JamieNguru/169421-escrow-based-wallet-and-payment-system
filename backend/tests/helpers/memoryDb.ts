@@ -97,6 +97,7 @@ export function createMemoryDb() {
       const result = await fn({
         get: async (target: any) => (target.path ? snapshot(target.collection, target.id) : target.run()),
         set: (ref: any, data: Data) => writes.push(() => store.set(ref.path, { ...data })),
+        delete: (ref: any) => writes.push(() => void store.delete(ref.path)),
         update: (ref: any, data: Data) =>
           writes.push(() => {
             if (!store.has(ref.path)) throw new Error(`No document to update: ${ref.path}`);
