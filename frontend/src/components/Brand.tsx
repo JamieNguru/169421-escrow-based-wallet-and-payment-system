@@ -25,5 +25,5 @@ export function BrandMark({ size = 40 }: { size?: number }) {
 }
 
 export function BrandName({ className = '' }: { className?: string }) {
-  return <span className={`text-lg font-extrabold tracking-tight ${className}`}>Escrow Wallet</span>
+  return <span className={`text-lg font-extrabold tracking-tight ${className}`}>Kaziforce</span>
 }

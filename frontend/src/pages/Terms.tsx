@@ -11,7 +11,7 @@ const SECTIONS: Array<{ title: string; body: string[] }> = [
   {
     title: '1. What the platform does',
     body: [
-      'Escrow Wallet holds a client’s payment while a worker does the job, and releases it when the client confirms the work is done.',
+      'Kaziforce holds a client’s payment while a worker does the job, and releases it when the client confirms the work is done.',
       'Funds held in escrow stay in escrow until they are released to the worker or refunded to the client under these terms.',
     ],
   },

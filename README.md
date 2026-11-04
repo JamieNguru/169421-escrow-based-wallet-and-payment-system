@@ -1,6 +1,6 @@
 # Escrow-Based Wallet and Payment System
 
-An escrow-based wallet and payment simulation system with Random Forest-powered trust scoring for digital labour platforms in East Africa. Capstone project by Jamie Nguru Kibanya, BSc Informatics and Computer Science, Strathmore University, supervised by Mr. James Njihia.
+Kaziforce is an escrow-based wallet and payment simulation system with Random Forest-powered trust scoring for digital labour platforms in East Africa. Capstone project by Jamie Nguru Kibanya, BSc Informatics and Computer Science, Strathmore University, supervised by Mr. James Njihia.
 
 ## Problem
 

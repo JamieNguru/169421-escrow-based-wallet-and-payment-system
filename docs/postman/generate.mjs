@@ -93,7 +93,7 @@ collection.variable = [
 
 const environment = {
   id: "escrow-wallet-local",
-  name: "Escrow Wallet - Local",
+  name: "Kaziforce - Local",
   values: [
     { key: "baseUrl", value: "http://localhost:4000", type: "default", enabled: true },
     { key: "token", value: "", type: "secret", enabled: true },
