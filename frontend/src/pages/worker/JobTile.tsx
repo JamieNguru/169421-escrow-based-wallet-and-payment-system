@@ -6,7 +6,7 @@ import type { Job, MyApplication } from '../../api/types'
 import Icon from '../../components/Icon'
 import { PhotoGallery } from '../../components/Photos'
 import { Button, Card, ErrorNote, Field, LinkButton, Small, TextArea } from '../../components/ui'
-import { formatDate, formatHours, formatMoney } from '../../lib/format'
+import { formatDate, formatMoney } from '../../lib/format'
 
 // An open job where the worker sends a quote (wireframes 10 and 11). The
 // client's budget is only a guide: the price the worker sends is the one that
@@ -130,12 +130,10 @@ export default function JobTile({ job, verified }: { job: Job; verified: boolean
       ) : quote ? (
         <div className="mt-3.5 flex items-center justify-between gap-2">
           <Button small icon="check" disabled className="w-auto flex-1 border-brand/30 bg-brand-tint text-brand-ink">
-            {quote.price !== undefined
-              ? `Quote sent: ${formatMoney(quote.price, quote.currency ?? job.currency)}${quote.deliveryHours !== undefined ? ` in ${formatHours(quote.deliveryHours)}` : ''}`
-              : 'Applied'}
+            {quote.price !== undefined ? 'Sent' : 'Applied'}
           </Button>
           {quote.status === 'pending' && (
-            <Button small className="w-auto px-4" onClick={openPanel}>Edit quote</Button>
+            <Button small className="w-[120px] shrink-0" onClick={openPanel}>Edit quote</Button>
           )}
         </div>
       ) : verified ? (
