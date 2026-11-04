@@ -14,6 +14,7 @@ import ResolveDispute from './pages/admin/ResolveDispute'
 import Users from './pages/admin/Users'
 import Login from './pages/auth/Login'
 import Register from './pages/auth/Register'
+import Landing from './pages/Landing'
 import Terms from './pages/Terms'
 import ChooseWorker from './pages/client/ChooseWorker'
 import ClientDashboard from './pages/client/Dashboard'
@@ -36,10 +37,16 @@ function Home() {
   return <Navigate to={user ? homePathFor(user.role) : '/login'} replace />
 }
 
+// Signed-in users go straight to their dashboard; everyone else sees the landing page.
+function Front() {
+  const { user } = useAuth()
+  return user ? <Navigate to={homePathFor(user.role)} replace /> : <Landing />
+}
+
 export default function App() {
   return (
     <Routes>
-      <Route path="/" element={<Home />} />
+      <Route path="/" element={<Front />} />
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/terms" element={<Terms />} />
