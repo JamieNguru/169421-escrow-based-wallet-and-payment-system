@@ -14,6 +14,7 @@ import ResolveDispute from './pages/admin/ResolveDispute'
 import Users from './pages/admin/Users'
 import Login from './pages/auth/Login'
 import Register from './pages/auth/Register'
+import Landing from './pages/Landing'
 import Terms from './pages/Terms'
 import ChooseWorker from './pages/client/ChooseWorker'
 import ClientDashboard from './pages/client/Dashboard'
@@ -39,7 +40,7 @@ function Home() {
 export default function App() {
   return (
     <Routes>
-      <Route path="/" element={<Home />} />
+      <Route path="/" element={<Landing />} />
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/terms" element={<Terms />} />
