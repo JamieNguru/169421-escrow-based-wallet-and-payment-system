@@ -49,6 +49,7 @@ Then fill in `.env`:
 | Services | `ML_SERVICE_URL`, `EXCHANGE_RATE_API_URL` | Both optional; defaults are `http://127.0.0.1:5000` and open.er-api.com |
 | M-Pesa STK Push | `DARAJA_CONSUMER_KEY`, `DARAJA_CONSUMER_SECRET`, `DARAJA_SHORTCODE`, `DARAJA_PASSKEY`, `DARAJA_CALLBACK_URL`, `DARAJA_STK_CALLBACK_SECRET`, `DARAJA_BASE_URL` | Sandbox credentials from developer.safaricom.co.ke |
 | M-Pesa B2C (withdrawals) | `DARAJA_B2C_SHORTCODE`, `DARAJA_INITIATOR_NAME`, `DARAJA_SECURITY_CREDENTIAL`, `DARAJA_B2C_CALLBACK_SECRET`, `DARAJA_B2C_RESULT_URL`, `DARAJA_B2C_TIMEOUT_URL` | From the Daraja Test Credentials page (Sandbox) |
+| Paystack (payments in) | `PAYMENT_PROVIDER=paystack`, `PAYSTACK_SECRET_KEY` | Client M-Pesa payments go through Paystack instead of Daraja. Use a `sk_test_` key from the Paystack dashboard (Test Mode). In test mode, pay with Paystack's test number `0710000000`; other numbers are declined. Optional webhook: `<public url>/api/payments/paystack/webhook`. Withdrawals do not use Paystack (starter accounts cannot pay out), so they stay on Daraja or `DARAJA_SIMULATE` |
 | Local shortcut | `DARAJA_SIMULATE=true` | No real M-Pesa calls; the UI shows simulate buttons. Ignored when `NODE_ENV=production` |
 | Seeding | `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NAME`, `DEMO_PASSWORD` | Used only by the seed scripts |
 | Compliance | `TAX_PIN_THRESHOLD_KES` | Optional, defaults to 100000 |

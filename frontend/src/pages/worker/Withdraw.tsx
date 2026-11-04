@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 
-import { paymentsApi, transactionsApi, walletApi } from '../../api/api'
+import { paymentsApi, walletApi } from '../../api/api'
+import type { Withdrawal } from '../../api/types'
 import { useAuth } from '../../auth/AuthContext'
 import { Page } from '../../components/AppShell'
 import { Async, Banner, Button, Card, Chip, ErrorNote, Field, Label, Money, PageHead, Small } from '../../components/ui'
@@ -13,11 +14,23 @@ import { formatDate, formatMoney } from '../../lib/format'
 export default function Withdraw() {
   const { user } = useAuth()
   const wallet = useAsync(walletApi.get)
-  const history = useAsync(() => transactionsApi.list().then((r) => r.transactions.filter((t) => t.type === 'withdrawal').slice(0, 3)))
+  const history = useAsync(() => paymentsApi.withdrawals().then((rows) => rows.slice(0, 5)))
   const [amount, setAmount] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sent, setSent] = useState<string | null>(null)
+
+  // A withdrawal stays "Processing" until M-Pesa reports back, so keep checking while one is open.
+  const hasPending = history.data?.some((w) => w.status === 'pending') ?? false
+  useEffect(() => {
+    if (!hasPending) return
+    const timer = setInterval(() => {
+      history.reload()
+      wallet.reload()
+    }, 3000)
+    return () => clearInterval(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasPending])
 
   const withdraw = async () => {
     setBusy(true)
@@ -73,15 +86,7 @@ export default function Withdraw() {
               rows.length === 0 ? (
                 <Small className="mt-3">No withdrawals yet.</Small>
               ) : (
-                rows.map((t, i) => (
-                  <div key={t.id} className={`flex items-center justify-between py-3 ${i ? 'border-t border-line' : ''}`}>
-                    <div>
-                      <div className="text-[15px] font-bold">{formatMoney(t.amount, t.currency)}</div>
-                      <Small>{formatDate(t.createdAt)}</Small>
-                    </div>
-                    <Chip>Requested</Chip>
-                  </div>
-                ))
+                rows.map((t, i) => <WithdrawalRow key={t.id} w={t} first={i === 0} />)
               )
             }
           </Async>
@@ -90,5 +95,28 @@ export default function Withdraw() {
         </Card>
       </div>
     </Page>
+  )
+}
+
+const STATUS: Record<Withdrawal['status'], { label: string; tone: 'amber' | 'green' | 'red' }> = {
+  pending: { label: 'Processing', tone: 'amber' },
+  completed: { label: 'Completed', tone: 'green' },
+  failed: { label: 'Failed', tone: 'red' },
+}
+
+function WithdrawalRow({ w, first }: { w: Withdrawal; first: boolean }) {
+  const status = STATUS[w.status]
+  return (
+    <div className={`py-3 ${first ? '' : 'border-t border-line'}`}>
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="text-[15px] font-bold">{formatMoney(w.amount, w.currency)}</div>
+          <Small>{formatDate(w.createdAt)}</Small>
+        </div>
+        <Chip tone={status.tone}>{status.label}</Chip>
+      </div>
+      {w.status === 'completed' && w.receipt && <Small className="mt-1">M-Pesa receipt {w.receipt}</Small>}
+      {w.status === 'failed' && <Small className="mt-1">{w.failureReason ?? 'The payout failed'}. The money is back in your wallet.</Small>}
+    </div>
   )
 }

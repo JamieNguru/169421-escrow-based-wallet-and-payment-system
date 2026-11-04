@@ -4,6 +4,7 @@ import { HttpError } from "../errors";
 import { authenticate, requireRole } from "../middleware/auth";
 import { requireTerms } from "../middleware/requireTerms";
 import { getB2CCallbackSecret, getStkCallbackSecret } from "../config/daraja";
+import { isPaystackEnabled } from "../config/paystack";
 import {
   getPayment,
   handleStkCallback,
@@ -11,7 +12,14 @@ import {
   initiateTopUp,
   simulatePayment,
 } from "../services/paymentService";
-import { handleB2CResult, handleB2CTimeout, initiateWithdrawal } from "../services/withdrawalService";
+import { handlePaystackWebhook, isValidPaystackSignature } from "../services/paystackService";
+import {
+  handleB2CResult,
+  handleB2CTimeout,
+  initiateWithdrawal,
+  listWithdrawals,
+  simulateWithdrawal,
+} from "../services/withdrawalService";
 import { initiateStkSchema, simulateSchema, topUpSchema, withdrawSchema } from "../validation/payments";
 
 const router = Router();
@@ -62,6 +70,31 @@ router.post("/withdraw", authenticate, requireRole("worker"), requireTerms, asyn
   }
 });
 
+// The worker's recent withdrawals and how each one ended. Declared before the
+// client payment lookup below, which would otherwise take this path.
+router.get("/withdrawals", authenticate, requireRole("worker"), async (req, res, next) => {
+  try {
+    res.json({ withdrawals: await listWithdrawals(req.user!.sub) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Test mode only (DARAJA_SIMULATE=true, never in production): settle one of your own test withdrawals.
+router.post("/withdrawals/:id/simulate", authenticate, requireRole("worker"), async (req, res, next) => {
+  const parsed = simulateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    const message = parsed.error.issues.map((issue) => issue.message).join("; ");
+    return next(new HttpError(400, message));
+  }
+
+  try {
+    res.json({ withdrawal: await simulateWithdrawal(req.user!.sub, String(req.params.id), parsed.data.outcome) });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // A client's own payment, polled by the app while the M-Pesa prompt is open.
 router.get("/:checkoutRequestId", authenticate, requireRole("client"), async (req, res, next) => {
   try {
@@ -106,6 +139,19 @@ router.post("/stk/callback/:secret", async (req, res, next) => {
     if (req.params.secret !== getStkCallbackSecret()) return next(new HttpError(404, "Not found"));
     await handleStkCallback(req.body);
     res.json({ ResultCode: 0, ResultDesc: "Accepted" });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Paystack calls this after a charge settles. The signature header stands in for a login.
+router.post("/paystack/webhook", async (req, res, next) => {
+  try {
+    if (!isPaystackEnabled() || !isValidPaystackSignature(req.rawBody, req.header("x-paystack-signature"))) {
+      return next(new HttpError(401, "invalid signature"));
+    }
+    await handlePaystackWebhook(req.body);
+    res.sendStatus(200);
   } catch (err) {
     next(err);
   }

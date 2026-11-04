@@ -26,6 +26,11 @@ export default function MpesaWait({
   settled.current = onSettled
 
   useEffect(() => {
+    // Paystack can approve a payment before the reply comes back; there is nothing to wait for then.
+    if (payment.status !== 'pending') {
+      settled.current(payment)
+      return
+    }
     let stopped = false
     const startedAt = Date.now()
     const timer = setInterval(() => {

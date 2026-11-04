@@ -133,6 +133,9 @@ export const paymentsApi = {
     post<{ withdrawal: Withdrawal }>('/api/payments/withdraw', { amount }).then(
       (r) => r.withdrawal,
     ),
+  // The worker's recent withdrawals, newest first, with how each one ended.
+  withdrawals: () =>
+    get<{ withdrawals: Withdrawal[] }>('/api/payments/withdrawals').then((r) => r.withdrawals),
 }
 
 export const transactionsApi = {

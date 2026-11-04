@@ -1,13 +1,17 @@
 import { randomUUID } from "crypto";
 
+import { isSimulateMode } from "../config/daraja";
 import { getDb } from "../config/firebase";
 import { HttpError } from "../errors";
 import type { WithdrawInput } from "../validation/payments";
 import { normalizePhone } from "../validation/register";
 import { assertTaxPinForPayout } from "./complianceService";
 import { initiateB2C } from "./darajaService";
+import { toDate } from "./escrowService";
 
 export interface Withdrawal {
+  // Same as originatorConversationId; set on what the API returns.
+  id?: string;
   originatorConversationId: string;
   conversationId?: string;
   workerId: string;
@@ -17,6 +21,8 @@ export interface Withdrawal {
   status: "pending" | "completed" | "failed";
   receipt?: string;
   failureReason?: string;
+  // True when no real payout was requested (DARAJA_SIMULATE test mode).
+  simulated?: boolean;
   createdAt: Date;
 }
 
@@ -34,6 +40,7 @@ export async function initiateWithdrawal(workerId: string, input: WithdrawInput)
 
   await assertTaxPinForPayout(workerId, input.amount);
 
+  const simulated = isSimulateMode();
   const id = randomUUID();
   const withdrawalRef = db.collection("withdrawals").doc(id);
   const walletQuery = db.collection("wallets").where("ownerId", "==", workerId).limit(1);
@@ -56,6 +63,7 @@ export async function initiateWithdrawal(workerId: string, input: WithdrawInput)
       currency: wallet.currency,
       phone,
       status: "pending",
+      ...(simulated && { simulated }),
       createdAt: now,
     };
     tx.set(withdrawalRef, record);
@@ -70,10 +78,17 @@ export async function initiateWithdrawal(workerId: string, input: WithdrawInput)
     return record;
   });
 
+  // Test mode: no payout is requested; the worker settles it with simulateWithdrawal.
+  if (simulated) {
+    const conversationId = `sim-${id}`;
+    await withdrawalRef.update({ conversationId });
+    return { ...withdrawal, id, conversationId };
+  }
+
   try {
     const result = await initiateB2C({ phone, amount: input.amount, originatorConversationId: id });
     await withdrawalRef.update({ conversationId: result.conversationId });
-    return { ...withdrawal, conversationId: result.conversationId };
+    return { ...withdrawal, id, conversationId: result.conversationId };
   } catch (err) {
     await failWithdrawal(id, "Could not reach M-Pesa");
     throw err;
@@ -137,4 +152,67 @@ export async function handleB2CTimeout(payload: any): Promise<void> {
   const id = payload?.Result?.OriginatorConversationID;
   if (typeof id !== "string") return;
   await failWithdrawal(id, "Payout timed out");
+}
+
+export interface WithdrawalView extends Withdrawal {
+  id: string;
+}
+
+// In test mode there is no Daraja to report back, so a simulated withdrawal is
+// paid out this long after it was requested, the first time it is looked at.
+const SIMULATED_PAYOUT_MS = 3000;
+
+// The worker's most recent withdrawals, newest first, with how each one ended.
+export async function listWithdrawals(workerId: string, limit = 10): Promise<WithdrawalView[]> {
+  const read = async () => {
+    const snap = await getDb().collection("withdrawals").where("workerId", "==", workerId).get();
+    return (snap.docs as Array<{ id: string; data: () => Record<string, any> }>)
+      .map((d) => ({ ...(d.data() as Withdrawal), id: d.id, createdAt: toDate(d.data().createdAt) }))
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .slice(0, limit);
+  };
+
+  const withdrawals = await read();
+  if (!isSimulateMode()) return withdrawals;
+
+  const due = withdrawals.filter(
+    (w) => w.simulated && w.status === "pending" && Date.now() - w.createdAt.getTime() >= SIMULATED_PAYOUT_MS,
+  );
+  if (due.length === 0) return withdrawals;
+  for (const w of due) await settleSimulated(w.id, "success");
+  return read();
+}
+
+// Settles a test-mode withdrawal as the Daraja result callback would.
+async function settleSimulated(id: string, outcome: "success" | "failure"): Promise<void> {
+  if (outcome === "success") {
+    await handleB2CResult({
+      Result: { ResultCode: 0, OriginatorConversationID: id, TransactionID: `SIM${randomUUID().slice(0, 8).toUpperCase()}` },
+    });
+  } else {
+    await failWithdrawal(id, "Simulated failure");
+  }
+}
+
+// Test mode only, API only (the app lets them complete by themselves): settles
+// one of the worker's own simulated withdrawals, as the Daraja result callback would. "success" completes it with a fake receipt;
+// "failure" fails it and puts the money back in the wallet. A withdrawal that
+// has already settled is returned as it is.
+export async function simulateWithdrawal(
+  workerId: string,
+  id: string,
+  outcome: "success" | "failure",
+): Promise<WithdrawalView> {
+  if (!isSimulateMode()) throw new HttpError(404, "Not found");
+
+  const ref = getDb().collection("withdrawals").doc(id);
+  const snap = await ref.get();
+  const data = snap.data() as Withdrawal | undefined;
+  if (!snap.exists || !data || data.workerId !== workerId) throw new HttpError(404, "Withdrawal not found");
+  if (!data.simulated) throw new HttpError(409, "Only test-mode withdrawals can be simulated");
+
+  if (data.status === "pending") await settleSimulated(id, outcome);
+
+  const latest = (await ref.get()).data() as Withdrawal;
+  return { ...latest, id, createdAt: toDate(latest.createdAt) };
 }
