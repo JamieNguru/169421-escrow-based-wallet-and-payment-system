@@ -105,7 +105,7 @@ Test data: client `client1`, worker `worker1`, admin from the seed. Use a fresh 
 | X3 | Stop the backend and use the app | Error message shown, no blank screen | Skip | Not run. |
 | X4 | Check the browser console across all sections | No uncaught errors | Partly | No errors seen in the console during the sections run. |
 | X5 | Upload a large or non-image file as a job photo | Rejected or handled cleanly | | Valid JPEGs accepted for KYC photos. Large and non-image files not tried yet. |
-| X6 | Exchange-rate feed failure | App still usable, no long stalls | Fail, then fixed | The feed host was unreachable from the test machine, so `/api/wallet/convert` returned 503 after a 10 second timeout on each of three parallel calls, and the pay screen held back the KES price until all three failed. Fixed: simultaneous requests share one provider call, a failure is remembered for 30 seconds, and a KES job shows its price at once. Covered by two new backend tests; not re-checked in the browser. |
+| X6 | Exchange-rate feed failure | App still usable, no long stalls | Fail, then fixed | The feed host was unreachable from the test machine, so `/api/wallet/convert` returned 503 after a 10 second timeout on each of three parallel calls, and the pay screen held back the KES price until all three failed. Fixed: simultaneous requests share one provider call, a failure is remembered for 30 seconds, and a KES job shows its price at once. Covered by two new backend tests. Re-checked in the browser on 2026-11-05 with the feed pointed at an address that never answers: the pay screen showed "KES 200" and the pay options at once while the three conversion calls hung, then returned 503 after about 10 seconds. |
 
 ### Findings and what was done
 
@@ -115,11 +115,11 @@ Test data: client `client1`, worker `worker1`, admin from the seed. Use a fresh 
 | **X6, slow pay screen** when the exchange-rate feed is down. | Fixed (see X6). |
 | **A2, no message** when the terms box is unticked. | Fixed and checked. |
 | **J10, double-counted history.** | Fixed and checked on the worker history. |
-| **J11, withdrawal shown as "Sent"** when only requested. | Relabelled "Requested" in the worker list and History. |
+| **J11, withdrawal shown as "Sent"** when only requested. | Relabelled "Requested" in the worker list and History. Re-checked in the browser on 2026-11-05: History shows "Withdraw to M-Pesa" with the status Requested, and only amounts that change the wallet carry a sign. |
 | **Admin payments** labelled top-ups "Escrow payment". | Fixed and checked. |
 | **D3, workers could not raise a dispute in the UI.** The worker dashboard also listed only one job in progress. | Added a worker report screen and link; the dashboard now lists every job in progress. Checked end to end. Nav highlight fixed by using `/worker/report/:jobId`. |
-| **D4, no sign of a pending refund request** on the client dashboard. | Fixed in the bug fixing pass (#47). `/api/jobs/mine` returns `refundStatus` for a client's jobs and the dashboard shows "Refund requested". Covered by a backend test; not re-checked in the browser. |
-| Overview card "Held in escrow KES 600" counts "1 funded job" while two jobs were held. | Fixed (#47). The amount includes work submitted and disputed jobs but the count only used `in_escrow`. The count now uses the same three statuses. Not re-checked in the browser. |
+| **D4, no sign of a pending refund request** on the client dashboard. | Fixed in the bug fixing pass (#47). `/api/jobs/mine` returns `refundStatus` for a client's jobs and the dashboard shows "Refund requested". Covered by a backend test. Re-checked in the browser on 2026-11-05: a client with a pending refund request sees "Refund requested" and "An admin is reviewing your refund request. The money stays held safely." |
+| Overview card "Held in escrow KES 600" counts "1 funded job" while two jobs were held. | Fixed (#47). The amount includes work submitted and disputed jobs but the count only used `in_escrow`. The count now uses the same three statuses. Re-checked in the browser on 2026-11-05: one job in escrow showed KES 500 across 1 job, and after a second job was submitted for release it showed KES 800 across 2 jobs. |
 | `PostJob.tsx` fails lint (`useMyLocation` called inside a callback). | Fixed (#47). Renamed to `locateMe`; lint reports no errors. |
 | X5, large or non-image file as a photo. | Checked in code (#47). The upload picker rejects non-images with "Choose an image file.", images are resized before sending, and the backend accepts only PNG, JPEG or WebP data URLs under a 2 MB body limit. Not tried in the browser. |
 
@@ -132,3 +132,4 @@ Needs the `DARAJA_*` keys, shortcode 174379, an HTTPS tunnel such as ngrok for `
 | Date | Commit | Tester | Sections run | Passed | Failed | Bug issues |
 |---|---|---|---|---|---|---|
 | 2026-10-27 | `c0a242f` plus the fixes on this branch | Claude, in the built-in browser against the local stack (simulate mode, real Firestore) | 2 to 9 in full or part; 10 (real sandbox) not run | See Result column | A2, D1, J5 (slow), X6, X7 (all with fixes above; X7 verified fixed on 2026-10-28) | None filed; fixed in this branch |
+| 2026-11-05 | `88001c6` | Claude, in the built-in browser against the local stack (simulate mode, real Firestore) | Re-check of X6, J11, D4 and the admin overview escrow count | All four | None | None |
