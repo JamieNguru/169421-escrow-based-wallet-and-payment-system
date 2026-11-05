@@ -26,14 +26,13 @@ KYC, compliance, terms and currency conversion were added beyond the original se
 - Trust-scoring service: 58 pytest tests pass.
 - Frontend: lint reports no errors.
 - CI (lint, type check and tests for the backend and the trust-scoring service) is green on `dev`.
-- Manual test pass: run on 2026-10-27 and 2026-10-28 against the local stack with real Firestore. Bugs found were fixed in [#47](https://github.com/JamieNguru/169421-escrow-based-wallet-and-payment-system/issues/47); the details are in the findings table of the [manual test pass](manual-test-pass.md).
+- Manual test pass: run on 2026-10-27 and 2026-10-28 against the local stack with real Firestore, and the fixes X6, J11, D4 and the overview escrow count were re-checked in the browser on 2026-11-05. Bugs found were fixed in [#47](https://github.com/JamieNguru/169421-escrow-based-wallet-and-payment-system/issues/47); the details are in the findings table of the [manual test pass](manual-test-pass.md).
 - Model validation: [#48](https://github.com/JamieNguru/169421-escrow-based-wallet-and-payment-system/issues/48), with figures in `trust-scoring-ml/reports/`.
 
 ## Known gaps
 
 - **Real M-Pesa.** Everything money-related was tested with `DARAJA_SIMULATE=true`. The real STK Push and B2C flows need keys, a public callback URL and a sandbox run.
 - **Firestore index.** The `jobs` index on status, currency and creation time is declared in `backend/firestore.indexes.json` but not yet created in the project. Deploy it with `firebase deploy --only firestore:indexes`.
-- **Fixes not re-checked in the browser.** The exchange-rate fallback (X6), the "Refund requested" badge on the client dashboard, and the corrected escrow count on the admin overview are covered by backend tests only.
 - **Manual steps not completed.** Trust levels after three settled jobs (T2) and with the Flask service down (T4), client and admin screens at 375px (X1), empty states (X2), the backend-down screen (X3), and uploading a large or non-image file in the browser (X5).
 - **One number to explain.** The admin overview showed one funded job where the Payments page showed none for the same amount. It was noted but not investigated.
 - **Deployment.** The project runs locally. Hosting on Vercel and Hugging Face Spaces is tracked in [#104](https://github.com/JamieNguru/169421-escrow-based-wallet-and-payment-system/issues/104).
