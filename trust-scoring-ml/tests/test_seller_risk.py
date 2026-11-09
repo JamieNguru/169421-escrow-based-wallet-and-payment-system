@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from src.seller_risk import build_dataset, seller_counts, score_terciles, seller_features, shrink, validate_trust_rule
+from src.seller_risk import build_dataset, risk_bands, seller_counts, score_terciles, seller_features, shrink, validate_trust_rule
 
 
 def _orders(seller, n, start, late_share=0.0, status="delivered", score=5):
@@ -91,3 +91,19 @@ def test_score_terciles_split_by_score_alone_and_keep_ties_together():
 
     tied = pd.Series([1.0] * 6 + [0.5, 0.4, 0.3])
     assert set(score_terciles(tied)[:6]) == {"High"}
+
+
+def test_risk_bands_put_lower_later_low_review_rates_in_the_high_trust_band():
+    rng = np.random.default_rng(0)
+    n = 300
+    past = rng.random(n)
+    data = pd.DataFrame(
+        {
+            "low_review_rate": past,
+            "late_rate": rng.random(n),
+            "later_low_review_rate": past * 0.5 + rng.normal(0, 0.02, n),
+        }
+    )
+    data["high_risk"] = (data["later_low_review_rate"] >= data["later_low_review_rate"].quantile(2 / 3)).astype(int)
+    bands = risk_bands(data)
+    assert bands["mean"]["High"] < bands["mean"]["Medium"] < bands["mean"]["Low"]

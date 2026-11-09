@@ -39,6 +39,8 @@ SEED = 42
 
 DELIVERY_COLUMNS = ["completion_rate", "late_rate", "delivery_overrun"]
 ALL_COLUMNS = DELIVERY_COLUMNS + ["low_review_rate"]
+# Past outcomes carry the signal: the shrunk low-review rate and late rate.
+HISTORY_COLUMNS = ["low_review_rate", "late_rate"]
 
 DATE_COLUMNS = ["order_purchase_timestamp", "order_delivered_customer_date", "order_estimated_delivery_date"]
 
@@ -138,6 +140,7 @@ def candidates(seed=SEED):
         ),
         "logistic, past reviews only": (logistic(), ["low_review_rate"]),
         "logistic, delivery + reviews": (logistic(), ALL_COLUMNS),
+        "logistic, reviews + late rate": (logistic(), HISTORY_COLUMNS),
         "logistic, volume only": (logistic(), ["orders"]),
         "always majority": (DummyClassifier(strategy="prior"), DELIVERY_COLUMNS),
     }
@@ -171,6 +174,22 @@ def sensitivity(orders, cutoffs=("2017-10-01", "2018-01-01"), strengths=(0, 30, 
                 }
             )
     return pd.DataFrame(rows)
+
+
+def risk_bands(data, seed=SEED):
+    """Out-of-fold risk from the history model, cut into Low/Medium/High trust by thirds of
+    that risk (highest risk = Low trust), with mean later low-review rate per band. Out-of-fold
+    so no seller is scored by a model that saw their own outcome."""
+    from sklearn.model_selection import StratifiedKFold, cross_val_predict
+
+    model = make_pipeline(StandardScaler(), LogisticRegression())
+    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
+    risk = pd.Series(
+        cross_val_predict(model, data[HISTORY_COLUMNS], data["high_risk"], cv=cv, method="predict_proba")[:, 1],
+        index=data.index,
+    )
+    bands = score_terciles(-risk)
+    return data.groupby(bands)["later_low_review_rate"].agg(["count", "mean"]).reindex(["High", "Medium", "Low"])
 
 
 def delivery_only_points(data):
@@ -235,6 +254,9 @@ def _main():
         print(result["by_level"].round(3).to_string())
         print("  Olist score terciles (no outcome data used):")
         print(result["by_tercile"].round(3).to_string())
+
+    print("\nHistory model (reviews + late rate), out-of-fold risk in thirds; later low-review rate by band:")
+    print(risk_bands(data).round(3).to_string())
 
     print("\nSensitivity to cutoff and shrinkage (logistic, ROC-AUC):")
     print(sensitivity(orders).round(3).to_string(index=False))
