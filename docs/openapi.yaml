@@ -1661,8 +1661,9 @@ components:
         trustLevel: { type: string, enum: [High, Medium, Low, New] }
         probabilities:
           type: object
-          description: Probability per level from the ML model. Empty for `New` users.
+          description: Probability per level from the client forest. Empty for `New` users and for workers, who get `risk` instead.
           additionalProperties: { type: number }
+        risk: { type: number, minimum: 0, maximum: 1, description: "Workers only: the history model's chance of being among the worst third on later outcomes, which the band is cut from." }
         features:
           type: object
           description: The model inputs worked out from the user's history. Absent for `New` users.

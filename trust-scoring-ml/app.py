@@ -2,6 +2,7 @@
 
 from flask import Flask, jsonify, request
 
+from src.history_model import predict_history
 from src.predict import predict_trust
 
 app = Flask(__name__)
@@ -40,6 +41,26 @@ def score():
             "probabilities": {label: float(p) for label, p in result["probabilities"].items()},
         }
     )
+
+
+@app.post("/score/history")
+def score_history():
+    """Worker trust band from the history model: counts of settled jobs and of those disputed,
+    refunded or split (the model validated on real Olist outcomes)."""
+    payload = request.get_json(silent=True)
+    if not payload:
+        return jsonify({"error": "Request body must be JSON"}), 400
+
+    counts = payload.get("counts")
+    if not isinstance(counts, dict):
+        return jsonify({"error": "'counts' is required and must be an object"}), 400
+
+    try:
+        return jsonify(predict_history(counts))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except FileNotFoundError:
+        return jsonify({"error": "No trained history model found"}), 503
 
 
 if __name__ == "__main__":

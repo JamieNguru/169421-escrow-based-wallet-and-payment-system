@@ -112,7 +112,7 @@ describe("end-to-end: auth, jobs, wallet, escrow, disputes, admin and trust", ()
     counter = 0;
     global.fetch = jest.fn(async () => ({
       ok: true,
-      json: async () => ({ trust_level: "High", probabilities: { High: 0.9, Medium: 0.08, Low: 0.02 } }),
+      json: async () => ({ trust_level: "High", probabilities: { High: 0.9, Medium: 0.08, Low: 0.02 }, risk: 0.1 }),
     })) as unknown as typeof fetch;
   });
 
@@ -275,7 +275,10 @@ describe("end-to-end: auth, jobs, wallet, escrow, disputes, admin and trust", ()
     const worked = await api.get("/api/trust-score/me").set("Authorization", worker.auth);
     expect(worked.status).toBe(200);
     expect(JSON.stringify(worked.body)).toContain("High");
-    expect(global.fetch).toHaveBeenCalled();
+    // Workers are banded by the history model, sent counts of settled and disputed jobs.
+    const [url, init] = (global.fetch as jest.Mock).mock.calls[0];
+    expect(url).toBe("http://127.0.0.1:5000/score/history");
+    expect(JSON.parse(init.body)).toEqual({ counts: { jobs: 3, disputed: 0 } });
 
     const asAdmin = await api.get(`/api/trust-score/${client.id}?role=client`).set("Authorization", admin().auth);
     expect(asAdmin.status).toBe(200);

@@ -61,7 +61,7 @@ router.get("/disputes", authenticate, requireRole("worker", "admin"), handler);
 
 ## Trust score
 
-The backend calls the Flask trust-scoring service (`trust-scoring-ml/`) at `ML_SERVICE_URL` (default `http://127.0.0.1:5000`) and returns `{ userId, role, trustLevel, probabilities }` (`trustLevel` is `High`, `Medium`, `Low` or `New`).
+The backend calls the Flask trust-scoring service (`trust-scoring-ml/`) at `ML_SERVICE_URL` (default `http://127.0.0.1:5000`) and returns `{ userId, role, trustLevel, probabilities, features, finishedJobs }` (`trustLevel` is `High`, `Medium`, `Low` or `New`). Clients are scored by the v2 forest through `/score`. Workers are scored by the history model through `/score/history`, validated on real Olist outcomes: the response adds `risk` (0-1) and `probabilities` is empty.
 
 - `GET /api/trust-score/me`: a client or worker's own score.
 - `GET /api/trust-score/:userId?role=client|worker`: any client or worker's score, admin only.
@@ -73,6 +73,8 @@ The backend calls the Flask trust-scoring service (`trust-scoring-ml/`) at `ML_S
 | Worker | `job_completion_rate` | Settled jobs paid out (`completed` or `split`) over all settled jobs (those plus `refunded`) |
 | Worker | `dispute_rate` | Disputes on the worker's jobs over their funded jobs |
 | Worker | `delivery_overrun` | How far past the delivery time the worker promised (`deliveryHours` on their quote) submitted jobs ran, as a share of that time (0 when on time) |
+| Worker | `late_rate` | Share of settled jobs submitted after the promised time. Shown to the worker, not scored |
+| Worker | `problem_rate` | Settled jobs that were refunded, split or had a dispute opened, over all settled jobs. This is what the history model scores, with the job count |
 | Client | `payment_completion_rate` | Same paid-out over settled share, for the client's jobs |
 | Client | `refund_rate` | Refund requests plus disputes the client raised, over their funded jobs |
 | Client | `escrow_release_time_hours` | Average time from the work being marked done to the client releasing |

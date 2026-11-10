@@ -107,3 +107,21 @@ def test_risk_bands_put_lower_later_low_review_rates_in_the_high_trust_band():
     data["high_risk"] = (data["later_low_review_rate"] >= data["later_low_review_rate"].quantile(2 / 3)).astype(int)
     bands = risk_bands(data)
     assert bands["mean"]["High"] < bands["mean"]["Medium"] < bands["mean"]["Low"]
+
+
+def test_risk_bands_can_use_past_reviews_alone():
+    rng = np.random.default_rng(1)
+    n = 300
+    past = rng.random(n)
+    data = pd.DataFrame(
+        {
+            "low_review_rate": past,
+            "late_rate": rng.random(n),  # noise: leaving it out must not hurt
+            "later_low_review_rate": past * 0.5 + rng.normal(0, 0.02, n),
+        }
+    )
+    data["high_risk"] = (data["later_low_review_rate"] >= data["later_low_review_rate"].quantile(2 / 3)).astype(int)
+
+    bands = risk_bands(data, columns=["low_review_rate"])
+
+    assert bands["mean"]["High"] < bands["mean"]["Medium"] < bands["mean"]["Low"]

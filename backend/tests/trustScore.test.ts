@@ -32,7 +32,7 @@ const flaskOk = (trust_level = "High") =>
   Promise.resolve({
     ok: true,
     status: 200,
-    json: async () => ({ role: "x", trust_level, probabilities: { High: 0.9, Low: 0.1 } }),
+    json: async () => ({ role: "x", trust_level, probabilities: { High: 0.9, Low: 0.1 }, risk: 0.12 }),
   });
 
 const tokenFor = (sub: string, role: "client" | "worker" | "admin") =>
@@ -128,36 +128,68 @@ describe("trust score endpoints", () => {
   });
 
   describe("a worker with enough history", () => {
-    it("is scored from their real jobs", async () => {
+    it("is banded by the history model from their real jobs", async () => {
       seasonedWorker();
       store.set("disputes/j3", { jobId: "j3", workerId: "w1", clientId: "c1", raisedByRole: "client" });
 
       const res = await me("w1", "worker");
 
       expect(res.status).toBe(200);
-      expect(res.body).toMatchObject({ userId: "w1", role: "worker", trustLevel: "High", probabilities: { High: 0.9, Low: 0.1 } });
-      // The inputs and the settled-job count come back so the score can be explained.
+      expect(res.body).toMatchObject({ userId: "w1", role: "worker", trustLevel: "High", risk: 0.12 });
       expect(res.body.finishedJobs).toBe(3);
-      expect(res.body.features).toEqual(sentBody().features);
-      expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:5000/score");
-      const { role, features } = sentBody();
-      expect(role).toBe("worker");
+      expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:5000/score/history");
+      // 3 settled jobs, of which the refunded one was disputed.
+      expect(sentBody()).toEqual({ counts: { jobs: 3, disputed: 1 } });
+    });
+
+    it("sends the inputs back so the score can be explained", async () => {
+      seasonedWorker();
+      store.set("disputes/j3", { jobId: "j3", workerId: "w1", clientId: "c1", raisedByRole: "client" });
+
+      const { features } = (await me("w1", "worker")).body;
+
       // 2 of 3 settled jobs paid out; 1 dispute over 4 funded jobs; jobs submitted after 8, 10, 12 and 20 hours.
       expect(features.job_completion_rate).toBeCloseTo(2 / 3, 5);
       expect(features.dispute_rate).toBeCloseTo(1 / 4, 5);
       // Delivered after 8, 10, 12 and 20 hours against promises of 8, 8, 10 and 10: 0%, 25%, 20% and 100% over.
       expect(features.delivery_overrun).toBeCloseTo((0 + 0.25 + 0.2 + 1) / 4, 5);
-      expect(features).not.toHaveProperty("response_time_hours");
+      // Shown, not scored: the 10 and 12 hour jobs ran past promises of 8 and 10 hours.
+      expect(features.late_rate).toBeCloseTo(2 / 3, 5);
+      // What the model scores: 1 of 3 settled jobs was disputed or refunded.
+      expect(features.problem_rate).toBeCloseTo(1 / 3, 5);
     });
 
-    it("counts a split payout as completed work", async () => {
+    it("counts a split payout as completed work, but as a disputed job", async () => {
       escrow("j1", "split", {});
       escrow("j2", "completed", {});
       escrow("j3", "completed", {});
 
+      const res = await me("w1", "worker");
+
+      expect(res.body.features.job_completion_rate).toBe(1);
+      expect(sentBody().counts.disputed).toBe(1);
+    });
+
+    it("counts a dispute opened on a job that still paid out, once", async () => {
+      escrow("j1", "completed", {});
+      escrow("j2", "completed", {});
+      escrow("j3", "completed", {});
+      store.set("disputes/j1", { jobId: "j1", workerId: "w1", clientId: "c1", raisedByRole: "client" });
+
       await me("w1", "worker");
 
-      expect(sentBody().features.job_completion_rate).toBe(1);
+      expect(sentBody().counts).toMatchObject({ jobs: 3, disputed: 1 });
+    });
+
+    it("leaves jobs that are still open out of the counts", async () => {
+      seasonedWorker();
+      escrow("j5", "in_escrow", {});
+      store.set("disputes/j5", { jobId: "j5", workerId: "w1", clientId: "c1", raisedByRole: "client" });
+
+      await me("w1", "worker");
+
+      expect(sentBody().counts.jobs).toBe(3);
+      expect(sentBody().counts.disputed).toBe(1);
     });
   });
 
@@ -187,9 +219,11 @@ describe("trust score endpoints", () => {
     escrow("j2", "completed", {}, 40);
     escrow("j3", "completed", {}, 40);
 
-    await me("w1", "worker");
+    const res = await me("w1", "worker");
 
-    expect(sentBody().features.delivery_overrun).toBe(0);
+    expect(res.body.features.delivery_overrun).toBe(0);
+    expect(res.body.features.late_rate).toBe(0);
+    expect(sentBody().counts).toEqual({ jobs: 3, disputed: 0 });
   });
 
   it("lets stored trustStats stand in for history (demo accounts)", async () => {
@@ -205,13 +239,26 @@ describe("trust score endpoints", () => {
     });
   });
 
+  it("lets stored trustStats stand in for a worker's history too", async () => {
+    store.set("workers/w1", { name: "Joe", trustStats: { job_completion_rate: 0.9, dispute_rate: 0.05, delivery_overrun: 0.2 } });
+
+    const res = await me("w1", "worker");
+
+    expect(res.body).toMatchObject({ trustLevel: "High", risk: 0.12 });
+    expect(sentBody()).toEqual({ counts: { jobs: 100, disputed: 15 } });
+  });
+
   it("uses ML_SERVICE_URL when set", async () => {
     process.env.ML_SERVICE_URL = "http://ml.internal:9000/";
     seasonedWorker();
-
     await me("w1", "worker");
+    store.set("clients/c1", { name: "Jane", trustStats: { refund_rate: 0.1 } });
+    await me("c1", "client");
 
-    expect(fetchMock.mock.calls[0][0]).toBe("http://ml.internal:9000/score");
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "http://ml.internal:9000/score/history",
+      "http://ml.internal:9000/score",
+    ]);
   });
 
   it("returns 401 without a token", async () => {
@@ -235,7 +282,7 @@ describe("trust score endpoints", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.userId).toBe("w1");
-    expect(sentBody().role).toBe("worker");
+    expect(sentBody()).toHaveProperty("counts");
   });
 
   it("shows an admin a new user as New too", async () => {
@@ -267,6 +314,10 @@ describe("trust score endpoints", () => {
     ["the request times out", () => Promise.reject(new DOMException("timed out", "TimeoutError"))],
     ["Flask responds 500", () => Promise.resolve({ ok: false, status: 500, json: async () => ({}) })],
     ["Flask returns an unexpected body", () => Promise.resolve({ ok: true, status: 200, json: async () => ({}) })],
+    [
+      "the history model returns no risk",
+      () => Promise.resolve({ ok: true, status: 200, json: async () => ({ trust_level: "High" }) }),
+    ],
   ])("returns 503 when %s", async (_name, impl) => {
     seasonedWorker();
     fetchMock.mockImplementation(impl);

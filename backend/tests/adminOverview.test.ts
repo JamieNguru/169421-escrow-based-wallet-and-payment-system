@@ -30,7 +30,7 @@ const flask = (trust_level: string) =>
   Promise.resolve({
     ok: true,
     status: 200,
-    json: async () => ({ trust_level, probabilities: { [trust_level]: 1 } }),
+    json: async () => ({ trust_level, probabilities: { [trust_level]: 1 }, risk: 0.1 }),
   });
 
 const tokenFor = (sub: string, role: "client" | "worker" | "admin") =>
@@ -93,7 +93,8 @@ describe("GET /api/admin/overview", () => {
     store.set("clients/c2", { name: "Chege", trustStats: {} });
     store.set("workers/w1", { name: "Wanjiku", trustStats: {} });
     fetchMock.mockImplementation((_url: string, init: { body: string }) => {
-      const { role } = JSON.parse(init.body);
+      // Workers are scored by the history model, which is sent counts and no role.
+      const role = JSON.parse(init.body).counts ? "worker" : "client";
       return role === "worker" ? Promise.reject(new TypeError("fetch failed")) : flask("High");
     });
 
@@ -140,7 +141,8 @@ describe("GET /api/admin/overview", () => {
     store.set("payments/p2", { status: "completed", createdAt: new Date() });
     store.set("payments/p3", { status: "completed", createdAt: new Date("2020-01-01T00:00:00Z") });
     fetchMock.mockImplementation((_url: string, init: { body: string }) => {
-      const { role } = JSON.parse(init.body);
+      // Workers are scored by the history model, which is sent counts and no role.
+      const role = JSON.parse(init.body).counts ? "worker" : "client";
       return flask(role === "worker" ? "Low" : "High");
     });
 

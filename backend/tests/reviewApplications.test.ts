@@ -61,7 +61,7 @@ const application = (jobId: string, workerId: string, minute: number, message?: 
 
 const fetchMock = jest.fn();
 const scored = (trust_level: string) =>
-  Promise.resolve({ ok: true, status: 200, json: async () => ({ trust_level, probabilities: { [trust_level]: 1 } }) });
+  Promise.resolve({ ok: true, status: 200, json: async () => ({ trust_level, probabilities: { [trust_level]: 1 }, risk: 0.1 }) });
 
 describe("GET /api/jobs/:jobId/applications", () => {
   const app = createApp();

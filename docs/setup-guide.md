@@ -24,7 +24,8 @@ cd trust-scoring-ml
 python -m venv .venv
 .venv\Scripts\activate          # macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
-python -m src.realistic         # trains and saves the v2 worker and client models
+python -m src.realistic         # trains and saves the v2 client model
+python -m src.history_model     # trains and saves the worker history model (needs data/olist/)
 python app.py
 ```
 
@@ -113,6 +114,6 @@ The backend tests use an in-memory Firestore, so they need no Firebase project o
 | Backend exits with a Node engine error | Upgrade to Node 22 or newer |
 | A Firestore credentials or connection error on start | Check `FIREBASE_SERVICE_ACCOUNT_PATH`, or set `FIRESTORE_EMULATOR_HOST` and start the emulator |
 | Trust score returns `503` | Start the Flask service, or fix `ML_SERVICE_URL`. The call times out after 5 seconds |
-| Flask fails with a missing model file | Run `python -m src.realistic` in `trust-scoring-ml/` |
+| Flask fails with a missing model file | Run `python -m src.realistic` and `python -m src.history_model` in `trust-scoring-ml/` |
 | STK Push never completes | The callback URL must be public HTTPS and end with the secret. Use a tunnel, or `DARAJA_SIMULATE=true` |
 | Frontend calls fail with a network error | Make sure the backend is running on port 4000 |
