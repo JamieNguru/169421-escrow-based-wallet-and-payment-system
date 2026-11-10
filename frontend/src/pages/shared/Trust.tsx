@@ -37,9 +37,11 @@ interface Factor {
 // markers for the page, not the model's own cut-offs.
 const FACTORS: Record<'client' | 'worker', Factor[]> = {
   worker: [
+    { key: 'problem_rate', label: 'Jobs ending in a dispute or refund', unit: 'rate', higherIsBetter: false, good: 0.05, fair: 0.12, target: 'aim for under 5%' },
     { key: 'dispute_rate', label: 'Jobs disputed', unit: 'rate', higherIsBetter: false, good: 0.02, fair: 0.05, target: 'aim for under 2%' },
     { key: 'job_completion_rate', label: 'Jobs finished', unit: 'rate', higherIsBetter: true, good: 0.97, fair: 0.9, target: 'aim for 97% or more' },
     { key: 'delivery_overrun', label: 'Delivery vs your promised time', unit: 'overrun', higherIsBetter: false, good: 0.05, fair: 0.3, target: 'deliver within the time you quoted' },
+    { key: 'late_rate', label: 'Jobs delivered late', unit: 'rate', higherIsBetter: false, good: 0.05, fair: 0.2, target: 'aim for under 5%' },
   ],
   client: [
     { key: 'refund_rate', label: 'Refunds and disputes you raised', unit: 'rate', higherIsBetter: false, good: 0.02, fair: 0.05, target: 'aim for under 2%' },
@@ -68,7 +70,9 @@ function WhyThisScore({ role, features, finishedJobs }: { role: 'client' | 'work
       <Card>
         <Small>
           {finishedJobs ? `Based on your ${finishedJobs} finished jobs. ` : ''}
-          The model compares three things, and disputes count the most.
+          {role === 'worker'
+            ? 'Your level comes from how often your finished jobs end in a dispute or refund. The other figures are shown for context and do not change it.'
+            : 'The model compares three things, and disputes count the most.'}
         </Small>
         {FACTORS[role].map((f) => {
           const value = features[f.key]
@@ -154,16 +158,33 @@ export default function Trust() {
               </Card>
             </div>
 
-            <SectionTitle>How sure the model is</SectionTitle>
-            <div className="grid gap-5 sm:grid-cols-3">
-              {(['High', 'Medium', 'Low'] as const).map((level) => (
-                <Card key={level}>
-                  <Label>{level} trust</Label>
-                  <Money size="text-3xl">{Math.round((score.probabilities[level] ?? 0) * 100)}%</Money>
-                  <Small>chance of this level</Small>
+            {score.risk !== undefined ? (
+              <>
+                <SectionTitle>Your risk</SectionTitle>
+                <Card>
+                  <Label>Chance of a poor record ahead</Label>
+                  <Money size="text-3xl">{Math.round(score.risk * 100)}%</Money>
+                  <Small>
+                    Worked out from sellers on a real marketplace whose early complaints were checked against how their
+                    later orders went. Your level is your place among them: the lowest third of risk is High, the
+                    highest third is Low.
+                  </Small>
                 </Card>
-              ))}
-            </div>
+              </>
+            ) : (
+              <>
+                <SectionTitle>How sure the model is</SectionTitle>
+                <div className="grid gap-5 sm:grid-cols-3">
+                  {(['High', 'Medium', 'Low'] as const).map((level) => (
+                    <Card key={level}>
+                      <Label>{level} trust</Label>
+                      <Money size="text-3xl">{Math.round((score.probabilities[level] ?? 0) * 100)}%</Money>
+                      <Small>chance of this level</Small>
+                    </Card>
+                  ))}
+                </div>
+              </>
+            )}
 
             {score.features && <WhyThisScore role={role} features={score.features} finishedJobs={score.finishedJobs} />}
           </>

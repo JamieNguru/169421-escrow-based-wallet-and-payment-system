@@ -169,6 +169,8 @@ export interface TrustScore {
   role: 'client' | 'worker'
   trustLevel: TrustLevel
   probabilities: Record<string, number>
+  // Workers: the history model's risk (0-1) behind the band. Clients get probabilities instead.
+  risk?: number
   // Jobs settled so far: for 'New', how many more are needed; otherwise what the score rests on.
   finishedJobs?: number
   jobsNeeded?: number

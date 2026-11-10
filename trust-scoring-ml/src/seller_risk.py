@@ -176,8 +176,8 @@ def sensitivity(orders, cutoffs=("2017-10-01", "2018-01-01"), strengths=(0, 30, 
     return pd.DataFrame(rows)
 
 
-def risk_bands(data, seed=SEED):
-    """Out-of-fold risk from the history model, cut into Low/Medium/High trust by thirds of
+def risk_bands(data, seed=SEED, columns=HISTORY_COLUMNS):
+    """Out-of-fold risk from the history model (on `columns`), cut into Low/Medium/High trust by thirds of
     that risk (highest risk = Low trust), with mean later low-review rate per band. Out-of-fold
     so no seller is scored by a model that saw their own outcome."""
     from sklearn.model_selection import StratifiedKFold, cross_val_predict
@@ -185,7 +185,7 @@ def risk_bands(data, seed=SEED):
     model = make_pipeline(StandardScaler(), LogisticRegression())
     cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
     risk = pd.Series(
-        cross_val_predict(model, data[HISTORY_COLUMNS], data["high_risk"], cv=cv, method="predict_proba")[:, 1],
+        cross_val_predict(model, data[columns], data["high_risk"], cv=cv, method="predict_proba")[:, 1],
         index=data.index,
     )
     bands = score_terciles(-risk)
@@ -257,6 +257,9 @@ def _main():
 
     print("\nHistory model (reviews + late rate), out-of-fold risk in thirds; later low-review rate by band:")
     print(risk_bands(data).round(3).to_string())
+
+    print("\nServed model (past low-review rate only), same bands:")
+    print(risk_bands(data, columns=["low_review_rate"]).round(3).to_string())
 
     print("\nSensitivity to cutoff and shrinkage (logistic, ROC-AUC):")
     print(sensitivity(orders).round(3).to_string(index=False))

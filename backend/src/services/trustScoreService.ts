@@ -28,6 +28,17 @@ export interface TrustScore {
   jobsNeeded?: number;
   // The model's inputs, so a score can be explained. Not sent for "New".
   features?: Record<string, number>;
+  // Workers only: the history model's risk (0-1, the chance of being among the worst third
+  // on later outcomes), which the band is cut from.
+  risk?: number;
+}
+
+// What the worker history model is given: settled jobs, and how many of them were disputed,
+// refunded or split (the stand-in for a dissatisfied customer). Late deliveries are shown
+// to the worker but not scored: see trust-scoring-ml/src/history_model.py.
+export interface HistoryCounts {
+  jobs: number;
+  disputed: number;
 }
 
 const HOUR_MS = 3_600_000;
@@ -38,12 +49,14 @@ const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
 // has been submitted, so there is no response time). They sit near the middle
 // of the training data, so a missing value doesn't push a score either way.
 const NEUTRAL: Record<ScoredRole, Record<string, number>> = {
-  worker: { job_completion_rate: 0.99, dispute_rate: 0.01, delivery_overrun: 0 },
+  worker: { job_completion_rate: 0.99, dispute_rate: 0.01, delivery_overrun: 0, late_rate: 0, problem_rate: 0 },
   client: { payment_completion_rate: 0.99, refund_rate: 0.01, escrow_release_time_hours: 9 },
 };
 
 interface History {
   features: Record<string, number>;
+  // Workers only: the counts the history model scores.
+  counts?: HistoryCounts;
   finishedJobs: number;
   // True when the user document carries hand-set trustStats (demo data).
   overridden: boolean;
@@ -53,6 +66,15 @@ type Doc = { data: () => Record<string, any> };
 
 const hoursBetween = (from: unknown, to: unknown) =>
   from && to ? (toDate(to).getTime() - toDate(from).getTime()) / HOUR_MS : undefined;
+
+// Demo accounts carry rates, not jobs, so they are scored as if they had a hundred settled jobs.
+const DEMO_JOBS = 100;
+function countsFromRates(features: Record<string, number>): HistoryCounts {
+  return {
+    jobs: DEMO_JOBS,
+    disputed: Math.round(DEMO_JOBS * clamp01(features.dispute_rate + (1 - features.job_completion_rate))),
+  };
+}
 
 // Works out the model's inputs from what the user has actually done on the
 // platform: their escrows, the disputes against or raised by them, and (for
@@ -67,7 +89,14 @@ export async function getTrustHistory(userId: string, role: ScoredRole): Promise
   }
 
   if (user.trustStats) {
-    return { features: { ...NEUTRAL[role], ...user.trustStats }, finishedJobs: MIN_FINISHED_JOBS, overridden: true };
+    const features = { ...NEUTRAL[role], ...user.trustStats };
+    const counts = role === "worker" ? countsFromRates(features) : undefined;
+    return {
+      features: counts ? { ...features, problem_rate: counts.disputed / counts.jobs } : features,
+      ...(counts && { counts }),
+      finishedJobs: MIN_FINISHED_JOBS,
+      overridden: true,
+    };
   }
 
   const party = role === "worker" ? "workerId" : "clientId";
@@ -101,12 +130,33 @@ export async function getTrustHistory(userId: string, role: ScoredRole): Promise
         return took === undefined || allowed === undefined ? [] : [Math.max(0, took - allowed) / allowed];
       }),
     );
+
+    // The history model works on settled jobs only. A job counts as disputed when it was
+    // refunded or split, or a dispute was opened on it. Jobs submitted after the delivery
+    // time the worker promised count as late, which is shown but not scored.
+    const disputedJobs = new Set((disputeSnap.docs as Doc[]).map((d) => d.data().jobId));
+    const settled = escrows.filter((e) => ["completed", "split", "refunded"].includes(e.status));
+    const withPromise = settled.flatMap((e) => {
+      const took = hoursBetween(e.fundedAt, e.workSubmittedAt);
+      const allowed = promised.get(e.jobId);
+      return took === undefined || allowed === undefined ? [] : [took > allowed];
+    });
+    const counts: HistoryCounts = {
+      jobs: settled.length,
+      disputed: settled.filter((e) => e.status !== "completed" || disputedJobs.has(e.jobId)).length,
+    };
+    const late = withPromise.filter(Boolean).length;
+
     return {
       features: {
         job_completion_rate: completionRate ?? NEUTRAL.worker.job_completion_rate,
         dispute_rate: escrows.length ? clamp01(disputes / escrows.length) : NEUTRAL.worker.dispute_rate,
         delivery_overrun: overrun ?? NEUTRAL.worker.delivery_overrun,
+        late_rate: withPromise.length ? late / withPromise.length : NEUTRAL.worker.late_rate,
+        // The figure the history model scores: settled jobs that were disputed, refunded or split.
+        problem_rate: counts.jobs ? counts.disputed / counts.jobs : NEUTRAL.worker.problem_rate,
       },
+      counts,
       finishedJobs,
       overridden: false,
     };
@@ -132,8 +182,26 @@ export async function getTrustHistory(userId: string, role: ScoredRole): Promise
   };
 }
 
+async function postToMl(path: string, payload: unknown): Promise<Record<string, unknown>> {
+  try {
+    const res = await fetch(`${getMlServiceUrl()}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+    if (!res.ok) {
+      throw new Error(`score service responded ${res.status}`);
+    }
+    return await res.json();
+  } catch (err) {
+    console.error("Trust score request failed:", err);
+    throw new HttpError(503, UNAVAILABLE);
+  }
+}
+
 export async function getTrustScore(userId: string, role: ScoredRole): Promise<TrustScore> {
-  const { features, finishedJobs, overridden } = await getTrustHistory(userId, role);
+  const { features, counts, finishedJobs, overridden } = await getTrustHistory(userId, role);
 
   // Too little history to judge: say so, instead of letting the model call it Low.
   if (!overridden && finishedJobs < MIN_FINISHED_JOBS) {
@@ -147,23 +215,25 @@ export async function getTrustScore(userId: string, role: ScoredRole): Promise<T
     };
   }
 
-  let body: { trust_level?: unknown; probabilities?: unknown };
-  try {
-    const res = await fetch(`${getMlServiceUrl()}/score`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ role, features }),
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    });
-    if (!res.ok) {
-      throw new Error(`score service responded ${res.status}`);
+  // Workers are banded by the history model, validated on real marketplace outcomes;
+  // clients by the v2 forest.
+  if (role === "worker" && counts) {
+    const body = await postToMl("/score/history", { counts });
+    if (typeof body.trust_level !== "string" || typeof body.risk !== "number") {
+      throw new HttpError(503, UNAVAILABLE);
     }
-    body = await res.json();
-  } catch (err) {
-    console.error("Trust score request failed:", err);
-    throw new HttpError(503, UNAVAILABLE);
+    return {
+      userId,
+      role,
+      trustLevel: body.trust_level,
+      probabilities: {},
+      risk: body.risk,
+      features,
+      ...(!overridden && { finishedJobs }),
+    };
   }
 
+  const body = await postToMl("/score", { role, features });
   if (typeof body.trust_level !== "string" || typeof body.probabilities !== "object") {
     throw new HttpError(503, UNAVAILABLE);
   }
