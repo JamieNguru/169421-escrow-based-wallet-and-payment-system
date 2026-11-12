@@ -21,6 +21,7 @@ Digital labour platforms in East Africa rely on informal mobile-money transfers 
 ## Documentation
 
 - [Setup guide](docs/setup-guide.md): clone to a running system
+- [Deployment guide](docs/deployment.md): Vercel and Hugging Face Spaces
 - [Architecture](docs/architecture.md): components, escrow lifecycle, data model, key flows, security
 - [Module map](docs/modules.md): where each module lives in the code
 - [API specification](docs/openapi.yaml): OpenAPI 3.1 for every public endpoint

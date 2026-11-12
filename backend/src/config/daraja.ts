@@ -1,7 +1,9 @@
-// Local test mode: no real M-Pesa prompt is sent, and the pay screen offers a
-// "simulate payment" button. Never active in production.
+// Test mode: no real M-Pesa prompt is sent, and the pay screen offers a
+// "simulate payment" button. Off in production unless the deployment is a demo
+// that says so explicitly with ALLOW_SIMULATE_IN_PRODUCTION=true.
 export function isSimulateMode(): boolean {
-  return process.env.DARAJA_SIMULATE === "true" && process.env.NODE_ENV !== "production";
+  if (process.env.DARAJA_SIMULATE !== "true") return false;
+  return process.env.NODE_ENV !== "production" || process.env.ALLOW_SIMULATE_IN_PRODUCTION === "true";
 }
 
 export interface DarajaConfig {

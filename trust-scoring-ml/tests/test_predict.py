@@ -85,3 +85,23 @@ def test_predict_trust_rejects_missing_features(trained_models):
 def test_predict_trust_rejects_out_of_range_features(trained_models, features):
     with pytest.raises(ValueError):
         predict_trust("client", features)
+
+
+def test_load_model_caches_until_the_file_changes(worker_dataset, tmp_path):
+    import os
+
+    model = train_worker_model(worker_dataset)[0]
+    save_model(model, "worker", "cache", models_dir=tmp_path)
+
+    first = load_model("worker", "cache", models_dir=tmp_path)
+    assert load_model("worker", "cache", models_dir=tmp_path) is first
+
+    path = save_model(model, "worker", "cache", models_dir=tmp_path)
+    stat = path.stat()
+    os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
+    assert load_model("worker", "cache", models_dir=tmp_path) is not first
+
+
+def test_load_model_still_raises_for_a_missing_file(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        load_model("worker", "nope", models_dir=tmp_path)

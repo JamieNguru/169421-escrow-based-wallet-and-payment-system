@@ -1,5 +1,6 @@
 """Save and load trained trust-scoring models, tagged by role and version."""
 
+from functools import lru_cache
 from pathlib import Path
 
 import joblib
@@ -22,5 +23,13 @@ def save_model(model, role, version, models_dir=MODELS_DIR):
 
 
 def load_model(role, version, models_dir=MODELS_DIR):
-    """Load a previously serialized model for a role and version tag."""
-    return joblib.load(model_path(role, version, models_dir))
+    """Load a previously serialized model for a role and version tag. Loads are cached per file
+    and modification time, so the service does not re-read the file on every request but still
+    picks up a retrained model."""
+    path = model_path(role, version, models_dir)
+    return _load(str(path), path.stat().st_mtime_ns)
+
+
+@lru_cache(maxsize=16)
+def _load(path, _mtime_ns):
+    return joblib.load(path)
