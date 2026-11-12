@@ -2,6 +2,8 @@
 
 Kaziforce is an escrow-based wallet and payment simulation system with Random Forest-powered trust scoring for digital labour platforms in East Africa. Capstone project by Jamie Nguru Kibanya, BSc Informatics and Computer Science, Strathmore University, supervised by Mr. James Njihia.
 
+**Live demo:** https://kaziforce-tau.vercel.app (payments in simulate mode). See the [deployment guide](docs/deployment.md).
+
 ## Problem
 
 Digital labour platforms in East Africa rely on informal mobile-money transfers with no escrow, no dispute resolution, and no reliable trust signal, so clients risk paying for undelivered work, and workers risk non-payment.

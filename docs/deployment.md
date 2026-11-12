@@ -11,6 +11,16 @@ The demo deployment uses free tiers only:
 
 The web app rewrites `/api/*` to the backend project (`frontend/vercel.json`), so the browser sees one origin and no CORS or `VITE_API_URL` is needed. Deploy in the order below: each step needs the URL of the one before.
 
+## Live demo
+
+| Part | URL |
+|---|---|
+| Web app | https://kaziforce-tau.vercel.app |
+| Backend API | https://kaziforce-api.vercel.app (health: `/api/health`) |
+| Trust-scoring service | https://kaziforce-trust-scoring.onrender.com (health: `/health`) |
+
+Payments run in simulate mode on this deployment, and it shares the Firebase project used for development. The trust service sleeps after 15 minutes idle on Render's free tier, so the first trust level after a pause can show as unavailable for up to a minute.
+
 ## 1. Trust-scoring service on Render
 
 Hugging Face now needs a paid plan for Docker Spaces, so the service runs on Render's free tier, which needs no card.
@@ -44,7 +54,7 @@ The worker model was trained on the Olist dataset (CC BY-NC-SA 4.0), so the serv
 
 1. Import the repository again as a second project, **Root Directory** `frontend`, framework preset **Vite**.
 2. If the backend project got a different URL than `kaziforce-api.vercel.app`, change the first rewrite in `frontend/vercel.json` to it.
-3. Deploy. Production deploys from `main`; pull requests get preview deployments.
+3. Deploy. The project name `kaziforce` was taken on `vercel.app`, so the web app is at `kaziforce-tau.vercel.app`. Vercel deploys the project's production branch on every push; pull requests get preview deployments.
 
 ## Smoke test
 
