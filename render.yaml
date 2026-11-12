@@ -1,0 +1,12 @@
+# Render Blueprint: the trust-scoring service as a free Docker web service.
+# The backend and web app are on Vercel (see docs/deployment.md).
+services:
+  - type: web
+    name: kaziforce-trust-scoring
+    runtime: docker
+    plan: free
+    rootDir: trust-scoring-ml
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    autoDeploy: true

@@ -14,6 +14,6 @@ COPY --chown=user app.py .
 COPY --chown=user src ./src
 COPY --chown=user models ./models
 
-# Spaces expects the app on port 7860
+# Listens on $PORT when the host sets one (Render), otherwise on 7860
 EXPOSE 7860
-CMD ["gunicorn", "--bind", "0.0.0.0:7860", "--workers", "1", "--timeout", "60", "app:app"]
+CMD gunicorn --bind "0.0.0.0:${PORT:-7860}" --workers 1 --timeout 60 app:app
