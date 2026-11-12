@@ -1,0 +1,313 @@
+import bcrypt from "bcryptjs";
+
+import { getDb } from "../config/firebase";
+import { CURRENT_TERMS_VERSION } from "../config/terms";
+import { HttpError } from "../errors";
+import type { ListUsersQuery, SetUserStatusInput } from "../validation/admin";
+import type { LoginInput } from "../validation/login";
+import type { ProfileInput } from "../validation/profile";
+import type { RegisterInput } from "../validation/register";
+
+const COLLECTIONS = { client: "clients", worker: "workers", admin: "admins" } as const;
+const BCRYPT_ROUNDS = 10;
+
+export type Role = keyof typeof COLLECTIONS;
+
+export interface NewUser {
+  name: string;
+  email: string;
+  phone?: string;
+  password: string;
+  role: Role;
+  acceptTerms?: boolean;
+}
+
+export interface RegisteredUser {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  role: Role;
+  walletId?: string;
+  termsAccepted?: boolean;
+}
+
+// Each role lives in its own collection, so email and phone uniqueness are
+// enforced through emails/{email} and phones/{phone} index docs written in the
+// same transaction (login looks users up through them).
+// Public registration only allows client and worker (see registerSchema);
+// admins are created by the seed script. Clients and workers also get a
+// wallet, written in the same transaction; admins don't hold funds.
+export async function createUser(input: NewUser): Promise<RegisteredUser> {
+  const db = getDb();
+  const passwordHash = await bcrypt.hash(input.password, BCRYPT_ROUNDS);
+
+  const emailRef = db.collection("emails").doc(input.email);
+  const phoneRef = input.phone ? db.collection("phones").doc(input.phone) : undefined;
+  const userRef = db.collection(COLLECTIONS[input.role]).doc();
+  const walletRef = input.role === "admin" ? undefined : db.collection("wallets").doc();
+
+  await db.runTransaction(async (tx) => {
+    if ((await tx.get(emailRef)).exists) {
+      throw new HttpError(409, "An account with this email already exists");
+    }
+    if (phoneRef && (await tx.get(phoneRef)).exists) {
+      throw new HttpError(409, "An account with this phone number already exists");
+    }
+    tx.set(emailRef, { role: input.role, userId: userRef.id });
+    if (phoneRef) tx.set(phoneRef, { role: input.role, userId: userRef.id });
+    tx.set(userRef, {
+      name: input.name,
+      email: input.email,
+      ...(input.phone && { phone: input.phone }),
+      passwordHash,
+      ...(input.acceptTerms && { termsVersion: CURRENT_TERMS_VERSION, termsAcceptedAt: new Date() }),
+      createdAt: new Date(),
+    });
+    if (walletRef) {
+      tx.set(walletRef, {
+        ownerId: userRef.id,
+        ownerRole: input.role,
+        currency: "KES",
+        balance: 0,
+        escrowBalance: 0,
+        createdAt: new Date(),
+      });
+    }
+  });
+
+  return {
+    id: userRef.id,
+    name: input.name,
+    email: input.email,
+    ...(input.phone && { phone: input.phone }),
+    role: input.role,
+    ...(walletRef && { walletId: walletRef.id }),
+    ...(input.acceptTerms && { termsAccepted: true }),
+  };
+}
+
+export function registerUser(input: RegisterInput): Promise<RegisteredUser> {
+  return createUser(input);
+}
+
+// Compared against when the email or phone is unknown, so response time doesn't
+// reveal which are registered.
+const DUMMY_HASH = bcrypt.hashSync("not-a-real-password", BCRYPT_ROUNDS);
+const INVALID_LOGIN = "Invalid email/phone or password";
+
+export async function authenticateUser(input: LoginInput): Promise<RegisteredUser> {
+  const db = getDb();
+
+  const indexDoc = input.email
+    ? await db.collection("emails").doc(input.email).get()
+    : await db.collection("phones").doc(input.phone ?? "").get();
+  const { role, userId } = (indexDoc.data() ?? {}) as Partial<{ role: Role; userId: string }>;
+  const userDoc = role && userId ? await db.collection(COLLECTIONS[role]).doc(userId).get() : undefined;
+  const user = userDoc?.data();
+
+  const matches = await bcrypt.compare(input.password, user?.passwordHash ?? DUMMY_HASH);
+  if (!user || !role || !userId || !matches) {
+    throw new HttpError(401, INVALID_LOGIN);
+  }
+
+  // Only reported after the password matches, so it doesn't reveal which
+  // emails are registered. Tokens issued before the suspension stay valid
+  // until they expire.
+  if (user.status === "suspended") {
+    throw new HttpError(403, "This account has been suspended");
+  }
+
+  return {
+    id: userId,
+    name: user.name,
+    email: user.email,
+    ...(user.phone && { phone: user.phone }),
+    role,
+    // Admins don't sign the terms; a missing version means not yet accepted.
+    termsAccepted: role === "admin" || user.termsVersion === CURRENT_TERMS_VERSION,
+  };
+}
+
+export async function hasAcceptedTerms(role: Role, id: string): Promise<boolean> {
+  const doc = await getDb().collection(COLLECTIONS[role]).doc(id).get();
+  return doc.data()?.termsVersion === CURRENT_TERMS_VERSION;
+}
+
+export async function acceptTerms(role: Role, id: string): Promise<{ termsAccepted: true; termsVersion: string }> {
+  if (role === "admin") {
+    throw new HttpError(403, "Admin accounts do not accept the terms");
+  }
+  const { ref } = await loadUser(role, id);
+  await ref.update({ termsVersion: CURRENT_TERMS_VERSION, termsAcceptedAt: new Date() });
+  return { termsAccepted: true, termsVersion: CURRENT_TERMS_VERSION };
+}
+
+// Changes a client's or worker's own name and phone. The phone is also the
+// M-Pesa number for payouts and a login identifier, so its phones/{phone} index
+// doc moves with it, in the same transaction, and a number already taken by
+// someone else is refused.
+export async function updateProfile(role: Role, id: string, input: ProfileInput): Promise<RegisteredUser> {
+  const db = getDb();
+  const userRef = db.collection(COLLECTIONS[role]).doc(id);
+
+  return db.runTransaction(async (tx) => {
+    const userSnap = await tx.get(userRef);
+    const user = userSnap.data();
+    if (!userSnap.exists || !user) {
+      throw new HttpError(404, "User not found");
+    }
+
+    const changes: Record<string, unknown> = {};
+    if (input.name !== undefined) changes.name = input.name;
+
+    if (input.phone !== undefined && input.phone !== user.phone) {
+      const newRef = db.collection("phones").doc(input.phone);
+      const taken = await tx.get(newRef);
+      if (taken.exists && taken.data()?.userId !== id) {
+        throw new HttpError(409, "An account with this phone number already exists");
+      }
+      if (user.phone) tx.delete(db.collection("phones").doc(user.phone));
+      tx.set(newRef, { role, userId: id });
+      changes.phone = input.phone;
+    }
+
+    if (Object.keys(changes).length > 0) tx.update(userRef, changes);
+    const next = { ...user, ...changes };
+    return {
+      id,
+      name: next.name,
+      email: next.email,
+      ...(next.phone && { phone: next.phone }),
+      role,
+      termsAccepted: next.termsVersion === CURRENT_TERMS_VERSION,
+    };
+  });
+}
+
+export type UserStatus = "active" | "suspended";
+
+export interface AdminUserView {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  role: Role;
+  status: UserStatus;
+  statusReason?: string;
+  createdAt: string;
+}
+
+export interface AdminUserDetail extends AdminUserView {
+  wallet?: { id: string; balance: number; escrowBalance: number; currency: string };
+}
+
+// Firestore returns Timestamps; the in-memory test stores hold plain Dates.
+function toDate(value: unknown): Date {
+  const date = (value as { toDate?: () => Date } | undefined)?.toDate?.() ?? value;
+  return date instanceof Date ? date : new Date(0);
+}
+
+// Never includes passwordHash. A missing status counts as active, so users
+// created before suspension existed need no migration.
+function toAdminView(role: Role, id: string, data: Record<string, any>): AdminUserView {
+  return {
+    id,
+    name: data.name,
+    email: data.email,
+    ...(data.phone && { phone: data.phone }),
+    role,
+    status: data.status === "suspended" ? "suspended" : "active",
+    ...(data.statusReason && { statusReason: data.statusReason }),
+    createdAt: toDate(data.createdAt).toISOString(),
+  };
+}
+
+// Sorts newest first; the key doubles as the pagination cursor.
+const sortKey = (user: AdminUserView) =>
+  `${String(Date.parse(user.createdAt)).padStart(15, "0")}|${user.role}|${user.id}`;
+
+// Reads the matching collections in full and pages in memory, which is fine
+// at this platform's scale.
+export async function listUsers(
+  query: ListUsersQuery,
+): Promise<{ users: AdminUserView[]; nextCursor?: string }> {
+  const db = getDb();
+  const roles = query.role ? [query.role] : (Object.keys(COLLECTIONS) as Role[]);
+
+  const snapshots = await Promise.all(roles.map((role) => db.collection(COLLECTIONS[role]).get()));
+  const all = snapshots
+    .flatMap((snapshot, i) => snapshot.docs.map((doc) => toAdminView(roles[i], doc.id, doc.data())))
+    .filter((user) => !query.status || user.status === query.status)
+    .sort((a, b) => (sortKey(a) < sortKey(b) ? 1 : -1));
+
+  const startAfter = query.startAfter;
+  const remaining = startAfter ? all.filter((user) => sortKey(user) < startAfter) : all;
+  const users = remaining.slice(0, query.limit);
+
+  return {
+    users,
+    ...(remaining.length > users.length && { nextCursor: sortKey(users[users.length - 1]) }),
+  };
+}
+
+async function loadUser(role: Role, id: string) {
+  const ref = getDb().collection(COLLECTIONS[role]).doc(id);
+  const doc = await ref.get();
+  if (!doc.exists) {
+    throw new HttpError(404, "User not found");
+  }
+  return { ref, data: doc.data() as Record<string, any> };
+}
+
+// Clients and workers have a wallet; admins don't.
+export async function getUser(role: Role, id: string): Promise<AdminUserDetail> {
+  const { data } = await loadUser(role, id);
+  const user = toAdminView(role, id, data);
+  if (role === "admin") {
+    return user;
+  }
+
+  const wallets = await getDb()
+    .collection("wallets")
+    .where("ownerId", "==", id)
+    .where("ownerRole", "==", role)
+    .limit(1)
+    .get();
+  const wallet = wallets.docs[0];
+  return {
+    ...user,
+    ...(wallet && {
+      wallet: {
+        id: wallet.id,
+        balance: wallet.data().balance,
+        escrowBalance: wallet.data().escrowBalance,
+        currency: wallet.data().currency,
+      },
+    }),
+  };
+}
+
+// Admin accounts can't be suspended, which also stops an admin suspending
+// themselves. Suspension is enforced at login only (see authenticateUser).
+export async function setUserStatus(
+  adminId: string,
+  role: Role,
+  id: string,
+  input: SetUserStatusInput,
+): Promise<AdminUserView> {
+  if (role === "admin") {
+    throw new HttpError(403, "Admin accounts cannot be suspended");
+  }
+
+  const { ref, data } = await loadUser(role, id);
+  const update = {
+    status: input.status,
+    statusReason: input.reason,
+    statusUpdatedAt: new Date(),
+    statusUpdatedBy: adminId,
+  };
+  await ref.update(update);
+
+  return toAdminView(role, id, { ...data, ...update });
+}

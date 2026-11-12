@@ -12,10 +12,13 @@ __pycache__/
 data/*.csv
 data/*.json
 data/processed/
+data/olist/
 
-# Trained models
+# Trained models (only the two the service serves are committed, so a host can build from git)
 models/*.joblib
 models/*.pkl
+!models/client_trust_model_v2.joblib
+!models/worker_trust_model_history.joblib
 
 # Environment variables
 .env

@@ -6,7 +6,8 @@ import pandas as pd
 from sklearn.metrics import precision_recall_fscore_support, roc_auc_score
 
 from src.feature_engineering import TRUST_LEVELS
-from src.train import train_client_model, train_worker_model
+from src.model_io import load_model
+from src.train import MODEL_VERSION, split_client_dataset, split_worker_dataset
 
 
 def evaluate_model(model, X_test, y_test):
@@ -30,30 +31,13 @@ def evaluate_model(model, X_test, y_test):
     }
 
 
-def evaluate_worker_model(worker_dataset, test_size=0.2, random_state=42):
-    """Train and evaluate the worker trust-scoring model."""
-    model, _, X_test, _, y_test = train_worker_model(worker_dataset, test_size=test_size, random_state=random_state)
-    return evaluate_model(model, X_test, y_test)
-
-
-def evaluate_client_model(client_dataset, test_size=0.2, random_state=42):
-    """Train and evaluate the client trust-scoring model."""
-    model, _, X_test, _, y_test = train_client_model(client_dataset, test_size=test_size, random_state=random_state)
-    return evaluate_model(model, X_test, y_test)
-
-
-def _print_report(name, metrics):
-    print(f"{name}: " + ", ".join(f"{k}={v:.3f}" for k, v in metrics.items()))
-
-
 def _main():
     data_dir = Path(__file__).resolve().parent.parent / "data" / "processed"
 
-    worker_dataset = pd.read_csv(data_dir / "worker_features.csv")
-    client_dataset = pd.read_csv(data_dir / "client_features.csv")
-
-    _print_report("Worker model", evaluate_worker_model(worker_dataset))
-    _print_report("Client model", evaluate_client_model(client_dataset))
+    for role, split in [("worker", split_worker_dataset), ("client", split_client_dataset)]:
+        _, X_test, _, y_test = split(pd.read_csv(data_dir / f"{role}_features.csv"))
+        metrics = evaluate_model(load_model(role, MODEL_VERSION), X_test, y_test)
+        print(f"{role}: " + ", ".join(f"{k}={v:.3f}" for k, v in metrics.items()))
 
 
 if __name__ == "__main__":

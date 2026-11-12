@@ -36,10 +36,14 @@ def aggregate_client_behavior(transactions):
         total_amount=("amount", "sum"),
         avg_amount=("amount", "mean"),
         error_count=("has_error", "sum"),
+        funds_error_count=("funds_error", "sum"),
+        credential_error_count=("credential_error", "sum"),
         avg_hours_between_transactions=("hours_since_prev", "mean"),
     ).reset_index()
 
     client_agg["error_rate"] = client_agg["error_count"] / client_agg["transaction_count"]
+    client_agg["funds_error_rate"] = client_agg["funds_error_count"] / client_agg["transaction_count"]
+    client_agg["credential_error_rate"] = client_agg["credential_error_count"] / client_agg["transaction_count"]
     client_agg["avg_hours_between_transactions"] = client_agg[
         "avg_hours_between_transactions"
     ].fillna(client_agg["avg_hours_between_transactions"].median())
@@ -55,11 +59,16 @@ def assign_synthetic_roles(client_agg, seed=42):
     return client_agg
 
 
+# Completion and dispute/refund features come from different error types (insufficient
+# balance vs. credential errors), so they are independent rather than mirror images of one
+# failure rate. Technical glitches are system noise and count towards neither.
+
+
 def build_worker_dataset(client_agg):
     """Derive the synthetic worker trust dataset from role-assigned client aggregates."""
     worker_df = client_agg[client_agg["role"] == "worker"].copy()
-    worker_df["job_completion_rate"] = 1 - worker_df["error_rate"]
-    worker_df["dispute_count"] = worker_df["error_count"]
+    worker_df["job_completion_rate"] = 1 - worker_df["funds_error_rate"]
+    worker_df["dispute_count"] = worker_df["credential_error_count"]
     worker_df["response_time_hours"] = worker_df["avg_hours_between_transactions"]
     worker_df["total_jobs"] = worker_df["transaction_count"]
     return worker_df[WORKER_COLUMNS].reset_index(drop=True)
@@ -68,9 +77,9 @@ def build_worker_dataset(client_agg):
 def build_client_dataset(client_agg):
     """Derive the synthetic client trust dataset from role-assigned client aggregates."""
     client_df = client_agg[client_agg["role"] == "client"].copy()
-    client_df["payment_completion_rate"] = 1 - client_df["error_rate"]
+    client_df["payment_completion_rate"] = 1 - client_df["funds_error_rate"]
     client_df["escrow_release_time_hours"] = client_df["avg_hours_between_transactions"]
-    client_df["refund_requests"] = client_df["error_count"]
+    client_df["refund_requests"] = client_df["credential_error_count"]
     client_df["total_jobs_paid"] = client_df["transaction_count"]
     return client_df[CLIENT_COLUMNS].reset_index(drop=True)
 
@@ -86,30 +95,29 @@ def build_worker_and_client_datasets(transactions, seed=42):
 TRUST_LEVELS = ["Low", "Medium", "High"]
 
 
-def _min_max_normalize(series):
-    """Scale a series to [0, 1]; a constant series (max == min) normalizes to all zeros."""
-    value_range = series.max() - series.min()
-    if value_range == 0:
-        return pd.Series(0.0, index=series.index)
-    return (series - series.min()) / value_range
+# Relative influence of each term on the trust score.
+TRUST_SCORE_WEIGHTS = {"completion": 1.0, "issue_rate": 0.5, "time": 0.3}
 
 
 def add_trust_label(df, completion_col, issue_count_col, time_col, total_col, label_col="trust_level"):
     """Derive a Low/Medium/High trust label from a completion rate, an issue rate, and a
     time metric, since no ground-truth trust label exists for this synthetic data.
 
-    completion_col is treated as already a 0-1 rate. issue_count_col is divided by
-    total_col to get a rate, and time_col is used directly; both are min-max normalized
-    (lower is better for both) and combined with completion_col into a composite score,
-    which is then split into equal-sized tertiles.
+    issue_count_col is divided by total_col to get a rate. Each of the three terms is
+    converted to a percentile rank (0-1) before weighting, so every term has the same
+    spread and the weights alone set its influence. Min-max scaling doesn't do this: the
+    completion and time columns are heavily skewed by a few outliers, which squash most
+    users into a narrow band. Higher completion is better; lower issue rate and time are
+    better. The weighted score is split into equal-sized tertiles.
     """
     df = df.copy()
     issue_rate = df[issue_count_col] / df[total_col]
 
-    norm_issue_rate = _min_max_normalize(issue_rate)
-    norm_time = _min_max_normalize(df[time_col])
-
-    score = df[completion_col] - 0.5 * norm_issue_rate - 0.3 * norm_time
+    score = (
+        TRUST_SCORE_WEIGHTS["completion"] * df[completion_col].rank(pct=True)
+        - TRUST_SCORE_WEIGHTS["issue_rate"] * issue_rate.rank(pct=True)
+        - TRUST_SCORE_WEIGHTS["time"] * df[time_col].rank(pct=True)
+    )
     df[label_col] = pd.qcut(score, q=3, labels=TRUST_LEVELS)
     return df
 
@@ -134,3 +142,19 @@ def add_client_trust_label(client_dataset):
         time_col="escrow_release_time_hours",
         total_col="total_jobs_paid",
     )
+
+
+def add_worker_rate_features(worker_dataset):
+    """Add dispute_rate (dispute_count / total_jobs) so models see a scale-invariant
+    rate instead of a raw count that depends on job volume."""
+    df = worker_dataset.copy()
+    df["dispute_rate"] = df["dispute_count"] / df["total_jobs"]
+    return df
+
+
+def add_client_rate_features(client_dataset):
+    """Add refund_rate (refund_requests / total_jobs_paid) so models see a scale-invariant
+    rate instead of a raw count that depends on job volume."""
+    df = client_dataset.copy()
+    df["refund_rate"] = df["refund_requests"] / df["total_jobs_paid"]
+    return df

@@ -1,7 +1,9 @@
 import pandas as pd
+import pytest
 
 from src.feature_engineering import (
     add_time_features,
+    add_worker_trust_label,
     aggregate_client_behavior,
     assign_synthetic_roles,
     build_client_dataset,
@@ -37,7 +39,9 @@ def test_aggregate_client_behavior_computes_expected_stats():
                 ]
             ),
             "amount": [10.0, 20.0, 30.0, 5.0],
-            "has_error": [0, 1, 0, 0],
+            "has_error": [0, 1, 1, 0],
+            "funds_error": [0, 1, 0, 0],
+            "credential_error": [0, 0, 1, 0],
         }
     )
 
@@ -47,9 +51,13 @@ def test_aggregate_client_behavior_computes_expected_stats():
     assert client_100["transaction_count"] == 3
     assert client_100["total_amount"] == 60.0
     assert client_100["avg_amount"] == 20.0
-    assert client_100["error_count"] == 1
+    assert client_100["error_count"] == 2
+    assert client_100["funds_error_count"] == 1
+    assert client_100["credential_error_count"] == 1
     assert client_100["avg_hours_between_transactions"] == 3.0
-    assert client_100["error_rate"] == 1 / 3
+    assert client_100["error_rate"] == 2 / 3
+    assert client_100["funds_error_rate"] == 1 / 3
+    assert client_100["credential_error_rate"] == 1 / 3
 
     # Client 200 has a single transaction, so its own avg_hours is NaN before the
     # median fill; the fill should use client 100's avg (3.0), the only other value.
@@ -75,18 +83,22 @@ def test_build_worker_dataset_derives_proxy_features():
         {
             "client_id": [1, 2],
             "transaction_count": [10, 20],
-            "error_count": [1, 4],
+            "error_count": [3, 6],
+            "error_rate": [0.3, 0.3],
+            "funds_error_rate": [0.05, 0.1],
+            "credential_error_count": [2, 3],
             "avg_hours_between_transactions": [5.0, 8.0],
-            "error_rate": [0.1, 0.2],
             "role": ["worker", "client"],
         }
     )
 
     result = build_worker_dataset(client_agg)
 
+    # Completion comes from insufficient-balance errors and disputes from credential errors,
+    # not from the overall error rate.
     assert result["client_id"].tolist() == [1]
-    assert result["job_completion_rate"].iloc[0] == 0.9
-    assert result["dispute_count"].iloc[0] == 1
+    assert result["job_completion_rate"].iloc[0] == pytest.approx(0.95)
+    assert result["dispute_count"].iloc[0] == 2
     assert result["response_time_hours"].iloc[0] == 5.0
     assert result["total_jobs"].iloc[0] == 10
 
@@ -96,9 +108,11 @@ def test_build_client_dataset_derives_proxy_features():
         {
             "client_id": [1, 2],
             "transaction_count": [10, 20],
-            "error_count": [1, 4],
+            "error_count": [3, 6],
+            "error_rate": [0.3, 0.3],
+            "funds_error_rate": [0.05, 0.1],
+            "credential_error_count": [2, 3],
             "avg_hours_between_transactions": [5.0, 8.0],
-            "error_rate": [0.1, 0.2],
             "role": ["worker", "client"],
         }
     )
@@ -106,9 +120,9 @@ def test_build_client_dataset_derives_proxy_features():
     result = build_client_dataset(client_agg)
 
     assert result["client_id"].tolist() == [2]
-    assert result["payment_completion_rate"].iloc[0] == 0.8
+    assert result["payment_completion_rate"].iloc[0] == pytest.approx(0.9)
     assert result["escrow_release_time_hours"].iloc[0] == 8.0
-    assert result["refund_requests"].iloc[0] == 4
+    assert result["refund_requests"].iloc[0] == 3
     assert result["total_jobs_paid"].iloc[0] == 20
 
 
@@ -126,6 +140,8 @@ def test_build_worker_and_client_datasets_covers_every_client_exactly_once():
                     "date": pd.Timestamp("2026-01-01") + pd.Timedelta(days=day, hours=client_id),
                     "amount": 10.0 + client_id,
                     "has_error": 0,
+                    "funds_error": 0,
+                    "credential_error": 0,
                 }
             )
     transactions = pd.DataFrame(rows)
@@ -148,3 +164,66 @@ def test_build_worker_and_client_datasets_covers_every_client_exactly_once():
         "refund_requests",
         "total_jobs_paid",
     ]
+
+
+def test_completion_and_dispute_rates_are_independent():
+    # Regression test: these used to be 1 - x and x of the same failure rate, so always summed to 1.
+    transactions = pd.DataFrame(
+        {
+            "id": range(1, 11),
+            "client_id": [7] * 10,
+            "date": pd.date_range("2026-01-01", periods=10, freq="h"),
+            "amount": [10.0] * 10,
+            "has_error": [1, 1, 1, 0, 0, 0, 0, 0, 0, 0],
+            "funds_error": [1, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+            "credential_error": [0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+        }
+    )
+    client_agg = aggregate_client_behavior(transactions).assign(role="worker")
+
+    worker = build_worker_dataset(client_agg).iloc[0]
+    dispute_rate = worker["dispute_count"] / worker["total_jobs"]
+
+    assert worker["job_completion_rate"] == pytest.approx(0.8)
+    assert dispute_rate == pytest.approx(0.1)
+    assert worker["job_completion_rate"] + dispute_rate != pytest.approx(1.0)
+
+
+def _workers(completion, disputes, response_hours):
+    n = len(completion)
+    return pd.DataFrame(
+        {
+            "client_id": range(n),
+            "job_completion_rate": completion,
+            "dispute_count": disputes,
+            "response_time_hours": response_hours,
+            "total_jobs": [100] * n,
+        }
+    )
+
+
+def test_trust_label_weights_completion_above_dispute_rate():
+    # Completion and dispute rate rise together. Completion carries weight 1.0 against 0.5 for
+    # disputes, so higher completion should win even though its spread (0.990-0.995) is tiny.
+    # The old unscaled formula let the dispute term swamp completion and ranked these backwards.
+    workers = _workers(
+        completion=[0.990, 0.991, 0.992, 0.993, 0.994, 0.995],
+        disputes=[1, 2, 3, 4, 5, 6],
+        response_hours=[5.0] * 6,
+    )
+
+    labels = add_worker_trust_label(workers)["trust_level"].tolist()
+
+    assert labels == ["Low", "Low", "Medium", "Medium", "High", "High"]
+
+
+def test_trust_label_rewards_faster_response():
+    workers = _workers(
+        completion=[0.99] * 6,
+        disputes=[2] * 6,
+        response_hours=[30.0, 20.0, 12.0, 8.0, 4.0, 2.0],
+    )
+
+    labels = add_worker_trust_label(workers)["trust_level"].tolist()
+
+    assert labels == ["Low", "Low", "Medium", "Medium", "High", "High"]

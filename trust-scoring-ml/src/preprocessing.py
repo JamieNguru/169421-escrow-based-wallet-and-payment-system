@@ -18,10 +18,21 @@ TRANSACTION_COLUMNS = [
 ]
 
 
+# Compact dtypes keep the 13.3M-row file to a few hundred MB in memory.
+TRANSACTION_DTYPES = {
+    "id": "int32",
+    "client_id": "int16",
+    "card_id": "int16",
+    "merchant_id": "int32",
+    "mcc": "int16",
+    "use_chip": "category",
+}
+
+
 def load_transactions(path):
     """Load the raw transactions CSV, keeping only the columns needed downstream."""
-    transactions = pd.read_csv(path)
-    transactions = transactions[TRANSACTION_COLUMNS].copy()
+    transactions = pd.read_csv(path, usecols=TRANSACTION_COLUMNS, dtype=TRANSACTION_DTYPES)
+    transactions = transactions[TRANSACTION_COLUMNS]
     transactions["date"] = pd.to_datetime(transactions["date"])
     return transactions
 
@@ -38,10 +49,25 @@ def clean_amount(transactions):
     return transactions
 
 
+# A transaction can list several comma-separated errors, e.g. "Bad PIN,Insufficient Balance".
+FUNDS_ERROR = "Insufficient Balance"
+CREDENTIAL_ERRORS = ["Bad PIN", "Bad Card Number", "Bad Expiration", "Bad CVV", "Bad Zipcode"]
+TECHNICAL_ERROR = "Technical Glitch"
+
+
 def flag_errors(transactions):
-    """Add a binary has_error flag from the errors column."""
+    """Flag failed transactions overall and by type.
+
+    has_error: any error. funds_error: insufficient balance (the user couldn't pay).
+    credential_error: a wrong PIN, card number, expiry, CVV, or zip code (a user-caused
+    verification failure). technical_error: a system glitch, not the user's doing.
+    """
     transactions = transactions.copy()
+    errors = transactions["errors"].fillna("")
     transactions["has_error"] = transactions["errors"].notna().astype(int)
+    transactions["funds_error"] = errors.str.contains(FUNDS_ERROR, regex=False).astype("int8")
+    transactions["credential_error"] = errors.str.contains("|".join(CREDENTIAL_ERRORS)).astype("int8")
+    transactions["technical_error"] = errors.str.contains(TECHNICAL_ERROR, regex=False).astype("int8")
     return transactions
 
 
@@ -58,9 +84,9 @@ def merge_mcc_descriptions(transactions, mcc_codes_path):
     mcc_lookup = pd.DataFrame(
         {
             "mcc": [int(k) for k in mcc_codes.keys()],
-            "mcc_description": list(mcc_codes.values()),
+            "mcc_description": pd.Categorical(list(mcc_codes.values())),
         }
-    )
+    ).astype({"mcc": transactions["mcc"].dtype})
     return transactions.merge(mcc_lookup, on="mcc", how="left")
 
 

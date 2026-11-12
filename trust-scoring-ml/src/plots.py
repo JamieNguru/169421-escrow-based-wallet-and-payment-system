@@ -1,9 +1,10 @@
 """Standard report figures for the trust-scoring models: static PNGs for the capstone write-up."""
 
-from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.ticker import PercentFormatter
+import pandas as pd
 from sklearn.metrics import confusion_matrix, roc_curve
 
 from src.feature_engineering import TRUST_LEVELS
@@ -37,29 +38,33 @@ def _new_figure(figsize=(6, 4.5)):
     return fig, ax
 
 
-def plot_fraud_rate_by_trust(mean_fraud_rate_by_level, title, save_path):
-    """Bar chart of mean real fraud rate per trust_level."""
-    fig, ax = _new_figure()
+def plot_fraud_rate_by_trust_and_volume(fraud_rate_by_band, title, save_path):
+    """Grouped bars: mean real fraud rate for each trust level, within each transaction-volume
+    band. Comparing trust levels inside a band removes the effect of volume on fraud rate."""
+    fig, ax = _new_figure(figsize=(7, 4.5))
 
-    levels = [level for level in TRUST_LEVELS if level in mean_fraud_rate_by_level]
-    values = [mean_fraud_rate_by_level[level] for level in levels]
-    colors = [TRUST_LEVEL_RAMP[level] for level in levels]
+    bands = list(fraud_rate_by_band.index)
+    x = np.arange(len(bands))
+    width = 0.26
 
-    bars = ax.bar(levels, values, color=colors, width=0.6)
-    for bar, value in zip(bars, values):
-        ax.text(
-            bar.get_x() + bar.get_width() / 2,
-            bar.get_height(),
-            f"{value:.4f}",
-            ha="center",
-            va="bottom",
-            fontsize=9,
-            color=INK_PRIMARY,
+    for i, level in enumerate(TRUST_LEVELS):
+        ax.bar(
+            x + (i - 1) * width,
+            fraud_rate_by_band[level].values,
+            width=width,
+            color=TRUST_LEVEL_RAMP[level],
+            edgecolor=SURFACE,
+            linewidth=1.5,
+            label=f"{level} trust",
         )
 
+    ax.set_xticks(x)
+    ax.set_xticklabels(bands, color=INK_SECONDARY)
+    ax.yaxis.set_major_formatter(PercentFormatter(xmax=1, decimals=2))
+    ax.set_xlabel("Transaction volume (quartile of users)", color=INK_SECONDARY)
     ax.set_ylabel("Mean real fraud rate", color=INK_SECONDARY)
-    ax.set_xlabel("Predicted trust level", color=INK_SECONDARY)
     ax.set_title(title, color=INK_PRIMARY, fontsize=12, fontweight="bold")
+    ax.legend(frameon=False, labelcolor=INK_SECONDARY)
     ax.yaxis.grid(True, color=GRIDLINE, linewidth=0.8)
     ax.set_axisbelow(True)
 
@@ -134,6 +139,44 @@ def plot_feature_importance(model, feature_names, title, save_path):
     ax.xaxis.grid(True, color=GRIDLINE, linewidth=0.8)
     ax.set_axisbelow(True)
 
+    fig.tight_layout()
+    fig.savefig(save_path, dpi=200)
+    plt.close(fig)
+
+
+def plot_tuning_heatmap(cv_results, title, save_path):
+    """Heatmap of mean cross-validated macro F1 for each n_estimators x max_depth pair."""
+    results = pd.DataFrame(
+        {
+            "max_depth": [str(p["max_depth"]) for p in cv_results["params"]],
+            "n_estimators": [p["n_estimators"] for p in cv_results["params"]],
+            "score": cv_results["mean_test_score"],
+        }
+    )
+    grid = results.pivot(index="max_depth", columns="n_estimators", values="score")
+    # Shallowest first, with "None" (no depth limit) last.
+    depth_order = sorted(grid.index, key=lambda d: float("inf") if d == "None" else int(d))
+    grid = grid.reindex(depth_order)
+
+    fig, ax = plt.subplots(figsize=(5.5, 4), facecolor=SURFACE)
+    im = ax.imshow(grid.values, cmap=SEQUENTIAL_CMAP)
+
+    ax.set_xticks(range(len(grid.columns)))
+    ax.set_yticks(range(len(grid.index)))
+    ax.set_xticklabels(grid.columns, color=INK_SECONDARY)
+    ax.set_yticklabels(grid.index, color=INK_SECONDARY)
+    ax.set_xlabel("Number of trees (n_estimators)", color=INK_SECONDARY)
+    ax.set_ylabel("Maximum depth (max_depth)", color=INK_SECONDARY)
+    ax.set_title(title, color=INK_PRIMARY, fontsize=12, fontweight="bold")
+
+    threshold = (np.nanmin(grid.values) + np.nanmax(grid.values)) / 2
+    for i in range(grid.shape[0]):
+        for j in range(grid.shape[1]):
+            value = grid.values[i, j]
+            color = "white" if value > threshold else INK_PRIMARY
+            ax.text(j, i, f"{value:.3f}", ha="center", va="center", color=color, fontsize=10)
+
+    fig.colorbar(im, ax=ax, shrink=0.8, label="Mean CV macro F1")
     fig.tight_layout()
     fig.savefig(save_path, dpi=200)
     plt.close(fig)

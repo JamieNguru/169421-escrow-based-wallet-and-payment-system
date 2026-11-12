@@ -1,0 +1,134 @@
+import { useState } from 'react'
+
+import { adminApi } from '../../api/api'
+import type { AdminUser, Role, TrustLevel } from '../../api/types'
+import { Page } from '../../components/AppShell'
+import { Async, Button, Chip, ErrorNote, PageHead, Table, Td } from '../../components/ui'
+import { useAsync } from '../../hooks/useAsync'
+import { formatDate } from '../../lib/format'
+
+const FILTERS: Array<{ id: Role | 'all'; label: string }> = [
+  { id: 'all', label: 'All' },
+  { id: 'client', label: 'Clients' },
+  { id: 'worker', label: 'Workers' },
+  { id: 'admin', label: 'Admins' },
+]
+
+const TRUST_TONE: Record<TrustLevel, 'green' | 'amber' | 'red' | 'grey'> ={ High: 'green', Medium: 'amber', Low: 'red', New: 'grey' }
+
+// Trust level on demand: the model runs only when an admin asks for it.
+function TrustCell({ role, id }: { role: 'client' | 'worker'; id: string }) {
+  const [level, setLevel] = useState<TrustLevel>()
+  const [busy, setBusy] = useState(false)
+  const [failed, setFailed] = useState(false)
+
+  const load = async () => {
+    setBusy(true)
+    setFailed(false)
+    try {
+      setLevel((await adminApi.trustScore(role, id)).trustLevel)
+    } catch {
+      setFailed(true)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (level) return <Chip tone={TRUST_TONE[level]}>{level}</Chip>
+  return (
+    <Button small tone="outline" className="h-9 w-[90px]" disabled={busy} onClick={() => void load()}>
+      {busy ? '…' : failed ? 'Retry' : 'Check'}
+    </Button>
+  )
+}
+
+// Browse users and suspend or restore them (wireframe 17).
+export default function Users() {
+  const [role, setRole] = useState<Role | 'all'>('all')
+  const [query, setQuery] = useState('')
+  const [busyId, setBusyId] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const state = useAsync(() => adminApi.users(role === 'all' ? undefined : role), [role])
+
+  const toggle = async (user: AdminUser) => {
+    const suspending = user.status === 'active'
+    const answer = window.prompt(`Why are you ${suspending ? 'suspending' : 'restoring'} ${user.name}?`)
+    if (answer === null) return // cancelled
+    const reason = answer.trim()
+    if (!reason) {
+      setError(`Give a reason to ${suspending ? 'suspend' : 'restore'} this account`)
+      return
+    }
+    setBusyId(user.id)
+    setError(null)
+    try {
+      await adminApi.setUserStatus(user.role, user.id, suspending ? 'suspended' : 'active', reason)
+      state.reload()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update this user')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const needle = query.trim().toLowerCase()
+
+  return (
+    <Page
+      header={
+        <PageHead
+          title="Users"
+          sub={state.data ? `${state.data.filter((u) => u.status === 'active').length} active · ${state.data.filter((u) => u.status === 'suspended').length} suspended` : undefined}
+        />
+      }
+    >
+      <input
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Search by name, email or phone"
+        aria-label="Search users"
+        className="h-12 w-full rounded-2xl border-[1.5px] border-line bg-surface px-4 text-[15px] shadow-sm transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-brand focus:outline-none focus:ring-4 focus:ring-brand/15"
+      />
+      <div className="flex flex-wrap gap-2">
+        {FILTERS.map((f) => (
+          <Chip key={f.id} tone={role === f.id ? 'solid' : 'grey'} onClick={() => setRole(f.id)}>
+            {f.label}
+          </Chip>
+        ))}
+      </div>
+      {error && <ErrorNote message={error} />}
+
+      <Async state={state}>
+        {(users) => {
+          const visible = users.filter((u) => !needle || `${u.name} ${u.email} ${u.phone ?? ''}`.toLowerCase().includes(needle))
+          return (
+            <Table headers={['Name', 'Role', 'Phone', 'Joined', 'Status', 'Trust', '']}>
+              {visible.map((u) => (
+                <tr key={`${u.role}-${u.id}`}>
+                  <Td>
+                    <div className="font-bold">{u.name}</div>
+                    <div className="text-[13px] text-muted">{u.email}</div>
+                  </Td>
+                  <Td className="capitalize">{u.role}</Td>
+                  <Td>{u.phone ?? '—'}</Td>
+                  <Td>{formatDate(u.createdAt)}</Td>
+                  <Td>
+                    <Chip tone={u.status === 'active' ? 'green' : 'red'}>{u.status === 'active' ? 'Active' : 'Suspended'}</Chip>
+                  </Td>
+                  <Td>{u.role !== 'admin' && <TrustCell role={u.role} id={u.id} />}</Td>
+                  <Td>
+                    {u.role !== 'admin' && (
+                      <Button small tone={u.status === 'active' ? 'danger' : 'outline'} className="h-9 w-[100px]" disabled={busyId === u.id} onClick={() => void toggle(u)}>
+                        {u.status === 'active' ? 'Suspend' : 'Restore'}
+                      </Button>
+                    )}
+                  </Td>
+                </tr>
+              ))}
+            </Table>
+          )
+        }}
+      </Async>
+    </Page>
+  )
+}
