@@ -1,20 +1,25 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { Link, Navigate, useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 
 import { homePathFor, useAuth } from '../../auth/AuthContext'
 import { Button, ErrorNote, Field } from '../../components/ui'
 import AuthLayout from './AuthLayout'
 
 export default function Login() {
-  const { user, login } = useAuth()
+  const { user, login, logout } = useAuth()
   const navigate = useNavigate()
   const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  if (user) return <Navigate to={homePathFor(user.role)} replace />
+  // Always ask for a sign-in: a session still open from earlier is ended here, so the
+  // form shows and signing in replaces it instead of skipping straight to a dashboard.
+  useEffect(() => {
+    if (user) logout()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()

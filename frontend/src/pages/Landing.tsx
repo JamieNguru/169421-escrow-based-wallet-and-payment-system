@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 
-import { homePathFor, useAuth } from '../auth/AuthContext'
 import { BrandMark, BrandName } from '../components/Brand'
 import Icon from '../components/Icon'
 import type { IconName } from '../components/Icon'
@@ -38,13 +37,6 @@ export default function Landing() {
 }
 
 // ─── Small helpers ──────────────────────────────────────────────────────────────
-
-// Everyone starts here, signed in or not. A signed-in visitor gets a way back to
-// their dashboard where a new visitor would get Log in and Get started.
-function useDashboardLink(): string | null {
-  const { user } = useAuth()
-  return user ? homePathFor(user.role) : null
-}
 
 // Fades and lifts its content in the first time it scrolls into view.
 function Reveal({ children, className = '', delay = 0 }: { children: ReactNode; className?: string; delay?: number }) {
@@ -107,7 +99,6 @@ function Backdrop() {
 // ─── Header ─────────────────────────────────────────────────────────────────────
 
 function Header() {
-  const dashboard = useDashboardLink()
   const [scrolled, setScrolled] = useState(false)
   const [open, setOpen] = useState(false)
 
@@ -138,26 +129,15 @@ function Header() {
 
         <div className="flex items-center gap-2.5">
           <ThemeToggle />
-          {dashboard ? (
-            <Link
-              to={dashboard}
-              className="hidden rounded-full bg-brand px-5 py-2.5 text-[15px] font-bold text-white shadow-button transition hover:-translate-y-0.5 hover:bg-brand-dark sm:block"
-            >
-              Go to dashboard
-            </Link>
-          ) : (
-            <>
-              <Link to="/login" className="hidden rounded-full px-4 py-2.5 text-[15px] font-bold text-ink transition-colors hover:bg-brand-tint sm:block">
-                Log in
-              </Link>
-              <Link
-                to="/register"
-                className="hidden rounded-full bg-brand px-5 py-2.5 text-[15px] font-bold text-white shadow-button transition hover:-translate-y-0.5 hover:bg-brand-dark sm:block"
-              >
-                Get started
-              </Link>
-            </>
-          )}
+          <Link to="/login" className="hidden rounded-full px-4 py-2.5 text-[15px] font-bold text-ink transition-colors hover:bg-brand-tint sm:block">
+            Log in
+          </Link>
+          <Link
+            to="/register"
+            className="hidden rounded-full bg-brand px-5 py-2.5 text-[15px] font-bold text-white shadow-button transition hover:-translate-y-0.5 hover:bg-brand-dark sm:block"
+          >
+            Get started
+          </Link>
           <button
             type="button"
             aria-label={open ? 'Close menu' : 'Open menu'}
@@ -184,20 +164,12 @@ function Header() {
             ))}
           </nav>
           <div className="mt-3 flex gap-3">
-            {dashboard ? (
-              <Link to={dashboard} className="flex-1 rounded-2xl bg-brand py-3 text-center font-bold text-white shadow-button">
-                Go to dashboard
-              </Link>
-            ) : (
-              <>
-                <Link to="/login" className="flex-1 rounded-2xl border-[1.5px] border-line py-3 text-center font-bold">
-                  Log in
-                </Link>
-                <Link to="/register" className="flex-1 rounded-2xl bg-brand py-3 text-center font-bold text-white shadow-button">
-                  Get started
-                </Link>
-              </>
-            )}
+            <Link to="/login" className="flex-1 rounded-2xl border-[1.5px] border-line py-3 text-center font-bold">
+              Log in
+            </Link>
+            <Link to="/register" className="flex-1 rounded-2xl bg-brand py-3 text-center font-bold text-white shadow-button">
+              Get started
+            </Link>
           </div>
         </div>
       )}
@@ -208,7 +180,6 @@ function Header() {
 // ─── Hero with the live escrow demo ─────────────────────────────────────────────
 
 function Hero() {
-  const dashboard = useDashboardLink()
   return (
     <div id="top" className="mx-auto grid w-full max-w-6xl items-center gap-12 px-5 pb-12 pt-10 sm:px-8 sm:pt-16 lg:grid-cols-[1.05fr_1fr] lg:gap-8 lg:pb-20">
       <div className="animate-rise">
@@ -228,10 +199,10 @@ function Hero() {
         </p>
         <div className="mt-8 flex flex-col gap-3 sm:flex-row">
           <Link
-            to={dashboard ?? '/register'}
+            to="/register"
             className="group flex h-[54px] items-center justify-center gap-2 rounded-2xl bg-brand px-7 text-base font-bold text-white shadow-button transition hover:-translate-y-0.5 hover:bg-brand-dark"
           >
-            {dashboard ? 'Go to your dashboard' : 'Create a free account'}
+            Create a free account
             <span className="transition-transform group-hover:translate-x-1">
               <Icon name="arrow" size={20} />
             </span>
@@ -653,7 +624,6 @@ function Faq() {
 // ─── Closing call to action and footer ──────────────────────────────────────────
 
 function FinalCta() {
-  const dashboard = useDashboardLink()
   return (
     <Section className="!pt-4">
       <Reveal>
@@ -662,26 +632,18 @@ function FinalCta() {
           <div className="absolute -bottom-28 -left-12 h-72 w-72 rounded-full bg-white/10" />
           <div className="relative">
             <h2 className="m-0 text-3xl font-extrabold leading-tight tracking-tight sm:text-4xl">
-              {dashboard ? 'Ready to pick up where you left off?' : 'Ready to hire or get hired the safe way?'}
+              Ready to hire or get hired the safe way?
             </h2>
             <p className="mx-auto mb-0 mt-3 max-w-xl text-base leading-relaxed text-white/80">
-              {dashboard ? 'Your jobs, wallet and trust level are waiting in your dashboard.' : 'Create an account in a minute. Your money is only ever released when you say so.'}
+              Create an account in a minute. Your money is only ever released when you say so.
             </p>
             <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-              {dashboard ? (
-                <Link to={dashboard} className="flex h-[54px] items-center justify-center rounded-2xl bg-white px-8 text-base font-extrabold text-brand-dark shadow-lg transition hover:-translate-y-0.5">
-                  Go to dashboard
-                </Link>
-              ) : (
-                <>
-                  <Link to="/register" className="flex h-[54px] items-center justify-center rounded-2xl bg-white px-8 text-base font-extrabold text-brand-dark shadow-lg transition hover:-translate-y-0.5">
-                    Get started
-                  </Link>
-                  <Link to="/login" className="flex h-[54px] items-center justify-center rounded-2xl border-[1.5px] border-white/50 px-8 text-base font-bold text-white transition hover:bg-white/10">
-                    I already have an account
-                  </Link>
-                </>
-              )}
+              <Link to="/register" className="flex h-[54px] items-center justify-center rounded-2xl bg-white px-8 text-base font-extrabold text-brand-dark shadow-lg transition hover:-translate-y-0.5">
+                Get started
+              </Link>
+              <Link to="/login" className="flex h-[54px] items-center justify-center rounded-2xl border-[1.5px] border-white/50 px-8 text-base font-bold text-white transition hover:bg-white/10">
+                I already have an account
+              </Link>
             </div>
           </div>
         </div>
@@ -691,7 +653,6 @@ function FinalCta() {
 }
 
 function Footer() {
-  const dashboard = useDashboardLink()
   return (
     <footer className="border-t border-line/60">
       <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-5 py-8 text-sm text-muted sm:flex-row sm:px-8">
@@ -705,20 +666,12 @@ function Footer() {
           <Link to="/terms" className="hover:text-brand-ink">
             Terms of service
           </Link>
-          {dashboard ? (
-            <Link to={dashboard} className="hover:text-brand-ink">
-              Dashboard
-            </Link>
-          ) : (
-            <>
-              <Link to="/login" className="hover:text-brand-ink">
-                Log in
-              </Link>
-              <Link to="/register" className="hover:text-brand-ink">
-                Register
-              </Link>
-            </>
-          )}
+          <Link to="/login" className="hover:text-brand-ink">
+            Log in
+          </Link>
+          <Link to="/register" className="hover:text-brand-ink">
+            Register
+          </Link>
         </div>
         <div>A Strathmore University capstone project</div>
       </div>
