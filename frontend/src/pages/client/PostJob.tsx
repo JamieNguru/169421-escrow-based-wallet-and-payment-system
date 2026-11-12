@@ -7,7 +7,7 @@ import type { Currency } from '../../api/types'
 import { Page } from '../../components/AppShell'
 import { PhotoPicker } from '../../components/Photos'
 import { Button, Card, ErrorNote, Field, Label, PageHead, Select, Small, TextArea } from '../../components/ui'
-import { getPosition } from '../../lib/geo'
+import { coordinatesLabel, getPosition, placeName } from '../../lib/geo'
 import type { Position } from '../../lib/geo'
 
 const STEPS = [
@@ -33,7 +33,11 @@ export default function PostJob() {
     setLocating(true)
     setError(null)
     try {
-      setCoords(await getPosition())
+      const pos = await getPosition()
+      setCoords(pos)
+      // Put the place in the box so the client can see and edit it; fall back to the
+      // coordinates so the position is still saved if the name can't be looked up.
+      setPlace((await placeName(pos)) ?? coordinatesLabel(pos))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not get your location')
     } finally {
@@ -74,7 +78,7 @@ export default function PostJob() {
                 {locating ? 'Finding you…' : coords ? 'Update my position' : 'Use my current position'}
               </button>
               {coords ? (
-                <span>Position saved, so nearby workers can see how far away you are.</span>
+                <span>Position saved, so nearby workers can see how far away you are. You can edit the place name above.</span>
               ) : (
                 <span>Optional. Lets workers see how far the job is from them.</span>
               )}
@@ -84,6 +88,7 @@ export default function PostJob() {
                 </button>
               )}
             </div>
+            {coords && <Small className="mt-1">Place names © OpenStreetMap contributors</Small>}
           </div>
           <div className="flex flex-col gap-3.5 sm:flex-row">
             <Select label="Currency" value={currency} onChange={(e) => setCurrency(e.target.value as Currency)}>

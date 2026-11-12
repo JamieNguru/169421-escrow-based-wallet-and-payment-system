@@ -24,3 +24,43 @@ export function getPosition(): Promise<Position> {
     )
   })
 }
+
+type Address = Partial<Record<string, string>>
+
+// Administrative suffixes OpenStreetMap adds to East African place names ("Kilimani ward").
+const ADMIN_SUFFIX = /\s+(ward|division|location|sub-location|sub-county|municipal|county)$/i
+const clean = (name?: string) => name?.replace(ADMIN_SUFFIX, '').trim() || undefined
+
+// A short place label such as "Kilimani, Nairobi" from an OpenStreetMap address:
+// the local area (or the road, if there is none) and the town it is in.
+export function labelFromAddress(address: Address): string | undefined {
+  const area =
+    clean(address.neighbourhood ?? address.suburb ?? address.quarter ?? address.village ?? address.hamlet) ?? address.road
+  // Some places come back with a ward as the "city"; skip those and use the next level up.
+  const townRaw = [address.city, address.town, address.municipality, address.county, address.state].find(
+    (v) => v && !/\sward$/i.test(v),
+  )
+  const town = clean(townRaw)
+  const parts = [area, town].filter((p): p is string => Boolean(p))
+  const unique = parts.filter((p, i) => parts.indexOf(p) === i)
+  return unique.length ? unique.join(', ').slice(0, 120) : undefined
+}
+
+// The place name for a position, from OpenStreetMap's Nominatim service. Undefined when
+// the lookup fails, so the caller can fall back to something else.
+export async function placeName(pos: Position): Promise<string | undefined> {
+  const url =
+    `https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=16&accept-language=en` +
+    `&lat=${pos.lat}&lon=${pos.lng}`
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(8_000) })
+    if (!res.ok) return undefined
+    const body = (await res.json()) as { address?: Address }
+    return body.address ? labelFromAddress(body.address) : undefined
+  } catch {
+    return undefined
+  }
+}
+
+// Used when no place name can be found, so the position is still saved with the job.
+export const coordinatesLabel = (pos: Position) => `Near ${pos.lat.toFixed(4)}, ${pos.lng.toFixed(4)}`
