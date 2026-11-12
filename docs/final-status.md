@@ -4,7 +4,7 @@ Status of the project against the seven modules in the original proposal, as of 
 
 ## Summary
 
-All seven modules are implemented and covered by automated tests and a hand-run test pass. One thing stands between the project and a fully signed-off state: the M-Pesa integration has only been exercised in simulate mode (no real Daraja sandbox run). The system runs locally and is not deployed, by decision. The remaining test gaps are listed below.
+All seven modules are implemented and covered by automated tests and a hand-run test pass. One thing stands between the project and a fully signed-off state: the M-Pesa integration has only been exercised in simulate mode (no real Daraja sandbox run). A demo deployment is live at https://kaziforce-tau.vercel.app. The remaining test gaps are listed below.
 
 ## Modules
 
@@ -32,8 +32,7 @@ KYC, compliance, terms and currency conversion were added beyond the original se
 ## Known gaps
 
 - **Real M-Pesa.** Everything money-related was tested with `DARAJA_SIMULATE=true`. The real STK Push and B2C flows need keys, a public callback URL and a sandbox run.
-- **Firestore index.** The `jobs` index on status, currency and creation time is declared in `backend/firestore.indexes.json` but not yet created in the project. Deploy it with `firebase deploy --only firestore:indexes`.
 - **Manual steps not completed.** Trust levels after three settled jobs (T2) and with the Flask service down (T4), client and admin screens at 375px (X1), empty states (X2), the backend-down screen (X3), and uploading a large or non-image file in the browser (X5).
 - **One number to explain.** The admin overview showed one funded job where the Payments page showed none for the same amount. It was noted but not investigated.
-- **Not deployed, by decision.** The project runs locally. Hosting on Vercel and Hugging Face Spaces ([#104](https://github.com/JamieNguru/169421-escrow-based-wallet-and-payment-system/issues/104)) was scoped and closed as not planned. The ML service `Dockerfile` and `requirements-deploy.txt` stay in the repo for anyone who wants to host it.
+- **Deployment is a demo.** The app is live at https://kaziforce-tau.vercel.app, with the API on Vercel and the trust service on Render's free tier ([#104](https://github.com/JamieNguru/169421-escrow-based-wallet-and-payment-system/issues/104), [deployment guide](deployment.md)). Payments run in simulate mode and it shares the development Firebase project, so it is not ready for real money.
 - **Outside the repository.** The proposal, wireframes and UML and ER diagrams are kept separately.
