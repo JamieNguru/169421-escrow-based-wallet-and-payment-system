@@ -4,28 +4,24 @@ The demo deployment uses free tiers only:
 
 | Part | Host | Root |
 |---|---|---|
-| Trust-scoring service (Flask) | Hugging Face Spaces, Docker SDK | `trust-scoring-ml/` |
+| Trust-scoring service (Flask) | Render, free Docker web service | `trust-scoring-ml/` |
 | Backend API (Express) | Vercel, serverless function | `backend/` |
 | Web app (React) | Vercel, static build | `frontend/` |
 | Database | Firebase Firestore (existing project) | - |
 
 The web app rewrites `/api/*` to the backend project (`frontend/vercel.json`), so the browser sees one origin and no CORS or `VITE_API_URL` is needed. Deploy in the order below: each step needs the URL of the one before.
 
-## 1. Trust-scoring service on Hugging Face Spaces
+## 1. Trust-scoring service on Render
 
-1. Train the two served models locally (the Olist CSVs must be in `data/olist/`):
+Hugging Face now needs a paid plan for Docker Spaces, so the service runs on Render's free tier, which needs no card.
 
-   ```
-   cd trust-scoring-ml
-   python -m src.realistic        # client_trust_model_v2.joblib
-   python -m src.history_model    # worker_trust_model_history.joblib
-   ```
+1. The two served models are committed (`trust-scoring-ml/models/client_trust_model_v2.joblib` and `worker_trust_model_history.joblib`); every other model file stays git-ignored. To retrain them, run `python -m src.realistic` and `python -m src.history_model` (the latter needs the Olist CSVs in `data/olist/`, which are never committed), then commit the two files.
+2. Sign in to render.com with GitHub, choose **New > Blueprint**, pick this repository and apply `render.yaml`. It creates the `kaziforce-trust-scoring` free Docker web service from `trust-scoring-ml/`, with `/health` as the health check.
+3. When the deploy is live, check `https://kaziforce-trust-scoring.onrender.com/health`.
 
-2. Create a Space at huggingface.co (SDK: **Docker**, hardware: free CPU) and clone it.
-3. Copy into the Space folder: `Dockerfile`, `requirements-deploy.txt`, `app.py`, `src/`, and a `models/` folder with only `client_trust_model_v2.joblib` and `worker_trust_model_history.joblib`. Do not copy `data/`: the Olist data is CC BY-NC-SA and only the trained models are needed.
-4. Commit and push. When the build finishes, check `https://<user>-<space>.hf.space/health`.
+A free Render service sleeps after 15 minutes without traffic and takes up to about a minute to wake. The backend gives the service 5 seconds, so the first trust request after a pause returns "trust level unavailable" while it wakes, and the next one works.
 
-The Space sleeps after about 48 hours without traffic. The first trust request after that returns 503 while it wakes; the backend already treats that as "trust level unavailable", and the next request works.
+The worker model was trained on the Olist dataset (CC BY-NC-SA 4.0), so the service is for non-commercial use.
 
 ## 2. Backend on Vercel
 
@@ -36,7 +32,7 @@ The Space sleeps after about 48 hours without traffic. The first trust request a
    |---|---|
    | `JWT_SECRET` | A new long random string (not the local one) |
    | `FIREBASE_SERVICE_ACCOUNT_JSON` | The service account key file's contents, raw or base64 |
-   | `ML_SERVICE_URL` | The Space URL from step 1, no trailing slash |
+   | `ML_SERVICE_URL` | The Render URL from step 1, no trailing slash |
    | `DARAJA_SIMULATE` | `true` |
    | `ALLOW_SIMULATE_IN_PRODUCTION` | `true` (demo only: payments are simulated) |
 
@@ -58,4 +54,4 @@ Health check; register and log in; top up (simulated); post a job, apply, select
 
 - The deployment shares the Firebase project with local development.
 - Vercel's Hobby plan is for non-commercial use.
-- Secrets live only in the Vercel and Hugging Face dashboards. `.env` files and key files stay git-ignored.
+- Secrets live only in the Vercel dashboard. `.env` files and key files stay git-ignored.

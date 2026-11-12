@@ -12,7 +12,7 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-Trained models (`models/*.joblib`) are git-ignored. Train the served client model with `python -m src.realistic` and the served worker model with `python -m src.history_model` (needs the Olist CSVs in `data/olist/`), then start the service with `python app.py` (port 5000). `Dockerfile` and `requirements-deploy.txt` are for container deployment (port 7860). See the [setup guide](../docs/setup-guide.md) for the whole system.
+Trained models (`models/*.joblib`) are git-ignored, except the two the service serves, which are committed so a host can build from git. Train the served client model with `python -m src.realistic` and the served worker model with `python -m src.history_model` (needs the Olist CSVs in `data/olist/`), then start the service with `python app.py` (port 5000). `Dockerfile` and `requirements-deploy.txt` are for container deployment (on `$PORT`, or 7860), used by the Render service in `../render.yaml` (see the [deployment guide](../docs/deployment.md)). See the [setup guide](../docs/setup-guide.md) for the whole system.
 
 ## Data
 
