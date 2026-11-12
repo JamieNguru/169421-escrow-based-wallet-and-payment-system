@@ -368,6 +368,32 @@ describe("settling M-Pesa payments", () => {
       expect(store.get("payments/sim-abcdefghijklmnop")).toMatchObject({ status: "pending" });
     });
 
+    test("can be allowed in production for a demo deployment", async () => {
+      process.env.NODE_ENV = "production";
+      process.env.ALLOW_SIMULATE_IN_PRODUCTION = "true";
+      try {
+        store.set("payments/sim-abcdefghijklmnop", { ...store.get("payments/ws_CO_1")!, simulated: true });
+
+        expect((await simulate("success")).status).toBe(200);
+        expect(store.get("payments/sim-abcdefghijklmnop")).toMatchObject({ status: "completed" });
+      } finally {
+        delete process.env.ALLOW_SIMULATE_IN_PRODUCTION;
+      }
+    });
+
+    test("the production override does nothing without DARAJA_SIMULATE", async () => {
+      process.env.NODE_ENV = "production";
+      process.env.DARAJA_SIMULATE = "false";
+      process.env.ALLOW_SIMULATE_IN_PRODUCTION = "true";
+      try {
+        store.set("payments/sim-abcdefghijklmnop", { ...store.get("payments/ws_CO_1")!, simulated: true });
+
+        expect((await simulate("success")).status).toBe(404);
+      } finally {
+        delete process.env.ALLOW_SIMULATE_IN_PRODUCTION;
+      }
+    });
+
     test("is off unless DARAJA_SIMULATE is true", async () => {
       process.env.DARAJA_SIMULATE = "false";
       store.set("payments/sim-abcdefghijklmnop", { ...store.get("payments/ws_CO_1")!, simulated: true });
