@@ -10,3 +10,5 @@ services:
     dockerContext: .
     healthCheckPath: /health
     autoDeploy: true
+    # Releases are built from main; dev is the integration branch.
+    branch: main
