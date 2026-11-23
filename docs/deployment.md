@@ -56,6 +56,21 @@ The worker model was trained on the Olist dataset (CC BY-NC-SA 4.0), so the serv
 2. If the backend project got a different URL than `kaziforce-api.vercel.app`, change the first rewrite in `frontend/vercel.json` to it.
 3. Deploy. The project name `kaziforce` was taken on `vercel.app`, so the web app is at `kaziforce-tau.vercel.app`. Vercel deploys the project's production branch on every push; pull requests get preview deployments.
 
+## Release from main
+
+The hosted system is built from `main`. `dev` is the integration branch, and a release is a pull request from `dev` into `main`, after which `main` is tagged (for example `v1.0.0`).
+
+- Render: `render.yaml` sets `branch: main`, so the trust-scoring service redeploys when `main` changes.
+- Vercel: in each project (backend and web app), set **Settings > Git > Production Branch** to `main`. Other branches and pull requests get preview deployments.
+
+After a release, check that each host shows the tagged commit: the latest production deployment on Vercel and the latest deploy on Render should both name the same commit as the tag.
+
+## Rollback
+
+- Vercel: open **Deployments**, choose the last good production deployment and use **Instant Rollback** (or **Promote to Production**).
+- Render: open the service's **Events**, find the last good deploy and choose **Rollback**.
+- Code: revert the faulty commit on `dev`, release it to `main` again, and tag the new version.
+
 ## Smoke test
 
 Health check; register and log in; top up (simulated); post a job, apply, select, fund, submit and release; raise a dispute and resolve it as admin; open a worker's trust page and the client's applicant list; load the admin overview, disputes and refunds (these need the indexes); check one page at 375 px wide.
